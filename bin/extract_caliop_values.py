@@ -125,8 +125,7 @@ files = {n:sorted(glob("*"+n.strftime('%Y-%m-%d')+"*.hdf")) for n in series[idt_
 
 t1 = time.time()
 # boucle pour chaque periode de n jours
-# for k in sorted(dt_nday.keys())[idt:idt+1]:
-for k in sorted(dt_nday.keys())[idt:]:
+for k in sorted(dt_nday.keys())[idt+2:idt+3]:
     print "\n\n\n###########periode   ", k
     print "###################################################"
     df_nday = pd.DataFrame()  # creation d une dataframe pour n jours
@@ -213,8 +212,8 @@ for k in sorted(dt_nday.keys())[idt:]:
             #####
     
             ##### ajout de la dataframe par orbite, correspondant a l'ensemble des variables lidar filtrées, dans la dataframe de n jours
-            lp = list(set(df_tmp.columns) - set(['Feature_Classification_Flags', 'Layer_Top_Altitude', 'Layer_Base_Altitude']))
-            df_nday = df_nday.append(df_tmp[lp][(df_tmp.Latitude >= yo.min()) & (df_tmp.Latitude <= yo.max()) & (df_tmp.Longitude >= xo.min()) & (df_tmp.Longitude <= xo.max())],ignore_index=True) # extraction de la zone d'etude
+            lp = list(set(df_day.columns) - set(['Feature_Classification_Flags', 'Layer_Top_Altitude', 'Layer_Base_Altitude']))
+            df_nday = df_nday.append(df_day[lp][(df_day.Latitude >= yo.min()) & (df_day.Latitude <= yo.max()) & (df_day.Longitude >= xo.min()) & (df_day.Longitude <= xo.max())],ignore_index=True) # extraction de la zone d'etude
         except AttributeError:
             #print day,' sans valeurs'
             pass
