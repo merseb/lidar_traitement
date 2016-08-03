@@ -3,8 +3,12 @@
 
 import numpy as np
 from netCDF4 import Dataset, date2index
-from joblib import Parallel, delayed
+from joblib import Parallel, delayed, load, dump, Memory
 import time
+import os
+from glob import glob
+import shutil
+import tempfile
 
 
 def splitlist(a, n):
@@ -142,7 +146,6 @@ def rolling_window(matrice, longitudes, latitudes, coord, window, reso):
                 stats[4] = np.nanstd(m)
         return stats
 
-
 def extractData(ponderation_type, lidar_parametres, lidar_df, ext_files, date, window, cpu, x, y, reso):
     """
     Fonction intermediaire qui appelle la fonction de ponderation et la fonction d'extraction des donnees externes.
@@ -168,10 +171,12 @@ def extractData(ponderation_type, lidar_parametres, lidar_df, ext_files, date, w
     **reso** (*float*): resolution spatiale
 
     """
-    ##### liste de coordonnees 
+    tmpdir = os.getcwd()
+
+    ##### liste de coordonnees
     xx, yy = np.meshgrid(x, y) # produit cartesien des lon/lat
     xy = zip(xx.flatten(), yy.flatten()) # liste de tuples(lon/lat)
-    
+
     ##### repartition des couples lat/lon dans n sous-listes = nombre de processeurs pour la parallelisation
     list_jobs = [job for job in splitlist(xy, cpu)] 
 
@@ -209,14 +214,26 @@ def extractData(ponderation_type, lidar_parametres, lidar_df, ext_files, date, w
             mat = np.ma.filled(nc.variables[f[1]][id_date,0, ...], np.nan)  # variable 4d: t,z,y,x
         else:
             mat = np.ma.filled(nc.variables[f[1]][id_date, ...], np.nan)  # variable 3d: t,y,x
+        filename_mat = os.path.join(tempfile.mkdtemp(prefix='temporaire_', dir=tmpdir), 'newfile.dat')
+        m = np.memmap(filename_mat, dtype= mat.dtype, mode='w+', shape=mat.shape)
+        m[:] = mat[:]
         lg = nc.variables['longitude'][:]
+        filename_lg = os.path.join(tempfile.mkdtemp(prefix='temporaire_', dir=tmpdir), 'newfile.dat')
+        lons = np.memmap(filename_lg, dtype= mat.dtype, mode='w+', shape=lg.shape)
+        lons[:] = lg[:]
         lt = nc.variables['latitude'][:]
-        #lons, lats = np.meshgrid(lg, lt)
+        filename_lt= os.path.join(tempfile.mkdtemp(prefix='temporaire_', dir=tmpdir), 'newfile.dat')
+        lats = np.memmap(filename_lt, dtype= mat.dtype, mode='w+', shape=lt.shape)
+        lats[:] = lt[:]
         nc.close()
         ##### parallelisation
-        values = Parallel(n_jobs=cpu)(delayed(extractData_helper)(mat, lg, lt, lcoords, window, reso) for lcoords in list_jobs)
+        values = Parallel(n_jobs=cpu)(delayed(extractData_helper)(m, lons, lats, lcoords, window, reso) for lcoords in list_jobs)
         t2 = time.time() - t1
         print t2, ' sec'
         list_values[f[1]] = np.vstack(values)  # empilement des matrices en sortie
+    dir_list = glob.glob(os.path.join(tmpdir, "temporaire_*"))
+    for path in dir_list:
+        if os.path.isdir(path):
+            shutil.rmtree(path)
     #####
     return list_values
