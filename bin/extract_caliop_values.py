@@ -6,7 +6,7 @@ import time
 import numpy as np
 import pandas as pd
 from glob import glob
-from datetime import datetime
+from datetime import datetime, timedelta
 from bisect import bisect_left
 import os
 import sys
@@ -97,7 +97,7 @@ lidar_params = ["Column_Optical_Depth_Aerosols_532", "Feature_Optical_Depth_532"
 
 
 
-cpu = multiprocessing.cpu_count() - 1 # nombre de processeurs pour la parallelisation
+cpu = 3 #multiprocessing.cpu_count() - 1 # nombre de processeurs pour la parallelisation
 
 #########################################################################################################################
 
@@ -126,8 +126,8 @@ files = {n:sorted(glob("*"+n.strftime('%Y-%m-%d')+"*.hdf")) for n in series[idt_
 t1 = time.time()
 # boucle pour chaque periode de n jours
 for k in sorted(dt_nday.keys())[idt+2:idt+3]:
-    print "\n\n\n###########periode   ", k
-    print "###################################################"
+    print "\n\n\n###########  periode   du", k.date(), " au ", (k + timedelta(days=ptemps-1)).date()
+    print "#########################################################"
     df_nday = pd.DataFrame()  # creation d une dataframe pour n jours
 
     #####  boucle pour chaque date de la periode de n jours
