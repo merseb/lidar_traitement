@@ -1,60 +1,12 @@
 # -*- coding: utf-8 -*-
 
-from pyhdf.SD import SD, SDC
-from osgeo import gdal, osr
 import numpy as np
-import time
-
-####################################################################################
-####################################################################################
-
-def splitlist(a, n):
-    """
-    divise liste en n sous-listes +- egales
-    """
-    k, m = len(a) / n, len(a) % n
-    return (a[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in xrange(n))
+from scipy.ndimage import median_filter
 
 
 ####################################################################################
 ####################################################################################
 
-
-def timefunc(f):
-    def f_timer(*args, **kwargs):
-        start = time.time()
-        result = f(*args, **kwargs)
-        end = time.time()
-        print f.__name__, 'took', end - start, 'time'
-        return result
-    return f_timer
-
-
-####################################################################################
-####################################################################################
-
-
-
-
-def readHDF(f, lvariables=[]):
-    """
-    f: fichier hdf
-    lvariables(optionnel): liste de variables
-    """
-    
-    hdf = SD(f, SDC.READ)
-    if not lvariables:
-        lvariables = hdf.datasets().keys()
-    for v in lvariables:
-        print v
-        print hdf.select(v).attributes()
-        print hdf.select(v).dimensions(),'\n'
-    hdf.end()
-
-
-####################################################################################
-####################################################################################
-   
 
 def calcul_Nbpoints(matrice, point):
     """
@@ -64,8 +16,6 @@ def calcul_Nbpoints(matrice, point):
     
     **matrice**(*1D array*): ensemble des latitudes \n
     **point**: latitude \n
-    
-    Retourne le nombre de valeurs trouvees
     """
     latmin =  point - 0.5
     latmax = point + 0.5
@@ -79,41 +29,13 @@ def calcul_Nbpoints(matrice, point):
             latmin = matrice[-1]
         if latmax > matrice[0]:
             latmax = matrice[0]
-    ind = np.where( (matrice >= latmin) & (matrice <= latmax) )[0]
+    ind = np.where( (matrice >= latmin) & (matrice <= latmax) )[0]  # extraction de la liste des indices
     return ind.shape[0]
 
-####################################################################################
-####################################################################################
-
-#@timefunc
-def points2matrice(coord_px,longitude,latitude,valeurs):
-    """
-    Convertit une liste de points en matrice
-    
-    PARAMETRES:
-    
-    **coord_px** (*liste,tuple*): coordonnees x,y du pixel \n
-    **longitude** (*list*): liste des longitudes a traiter \n
-    **latitude** (*list*): liste des latitudes a traiter \n
-    **valeurs** (*list*): liste des valeurs \n
-
-    Retourne en (x,y) la moyenne des valeurs 
-    """
-
-    x = coord_px[0]
-    y = coord_px[1]
-    idx = np.where((latitude >= y-0.25) & (latitude < y) & (longitude >= x) & (longitude < x+0.25))[0] # recherche des indices des valeurs de lat/lon comprises dans le "pixel" de coord (x[j],y[i])
-    if idx.size:
-        return np.mean(valeurs[idx])
-    else:
-        return np.nan
-
-
 
 ####################################################################################
 ####################################################################################
 
-    
 
 def indiceCouche(matrice):
     """
@@ -128,49 +50,67 @@ def indiceCouche(matrice):
         return matrice.flatten()[ind[0]],ind[0]
     else:
         return -9999,-9999
-
-
-####################################################################################
-####################################################################################
-
-
-
-def array2raster(path,Xo,Yo,pixelWidth,pixelHeight,array):
-    """
-    Conversion matrice en raster
-    
-    PARAMETRES:
-    
-    **path** (*string*): 'path/to/the/file.tif' \n
-    **x_origin** (*float*) \n
-    **y_origin** (*float*) \n
-    **pixelWidth** \n
-    **pixelHeight** \n
-    **array** : matrice 2d
-    
-    Retourne fichier .tif
-    
-    """
-    
-    cols = array.shape[1]
-    rows = array.shape[0]
-    reversed_arr = array[::-1] # inversion de la matrice 
-    
-    driver = gdal.GetDriverByName('GTiff')
-    outRaster = driver.Create(path, cols, rows, 1, gdal.GDT_Byte)
-    outRaster.SetGeoTransform((Xo, pixelWidth, 0, Yo, 0, pixelHeight))
-    outband = outRaster.GetRasterBand(1)
-    outband.WriteArray(reversed_arr)
-    outRasterSRS = osr.SpatialReference()
-    outRasterSRS.ImportFromEPSG(4326)
-    outRaster.SetProjection(outRasterSRS.ExportToWkt())
-    outband.FlushCache()
     
     
 ####################################################################################
 ####################################################################################   
 
+
+def decodeFeatureMask(int16):
+    """
+    Flag: conversion int16 --> int
+    La fonction retourne une matrice de 3 valeurs chacune correspondant aux flags (1,2,3)
+    
+    Subtype                  
+    0 = not determined      
+    1 = clean marine   
+    2 = pure dust
+    3 = polluted continental
+    4 = clean continental
+    5 = polluted dust
+    6 = smoke
+    7 = other
+    """
+    
+    
+    binaire = format(int16,'016b')  # little endian 
+    FeatureType = np.int(binaire[-3:],2)
+    FeatureTypeQA = np.int(binaire[-5:-3],2)
+    #IceWaterPhase = np.int(binaire[-7:-5],2)
+    #IceWaterPhaseQA = np.int(binaire[-9:-7],2)
+    FeatureSubtype = np.int(binaire[-12:-9],2)
+    #CloudAerosolPSCTypeQA = np.int(binaire[-13],2)
+    #Horizonthalaveraging = np.int(binaire[:-13],2)
+    #list_feature = [FeatureType,FeatureTypeQA,IceWaterPhase,IceWaterPhaseQA,FeatureSubtype,CloudAerosolPSCTypeQA,Horizonthalaveraging]
+    #return [binaire,FeatureSubtype]
+    if FeatureType==3 and FeatureTypeQA>1:
+        if FeatureSubtype == 0:
+            return "undeterminate"
+        elif FeatureSubtype == 1:
+            return "clean_marine"
+        elif FeatureSubtype == 2:
+            return "dust"
+        elif FeatureSubtype == 3:
+            return "polluted_continental"
+        elif FeatureSubtype == 4:
+            return "clean_continental"
+        elif FeatureSubtype == 5:
+            return "polluted_dust"
+        elif FeatureSubtype == 6:
+            return "smoke"
+        elif FeatureSubtype == 7:
+            return "other"
+    else:
+        return "no_aerosol"
+
+####################################################################################
+####################################################################################   
+
+
 def decodeIGBP(indice):
+    """
+    Conversion indice IGBP --> nom
+    """
     IGBPcode = ['Evergreen_Needleleaf_Forest', 'Evergreen_Broadleaf_Forest',
                 'Deciduous_Needleleaf_Forest', 'Deciduous_Broadleaf_Forest',
                 'Mixed_Forest', 'Closed_Shrublands', 'Open_Shrubland(Desert)',
@@ -180,9 +120,43 @@ def decodeIGBP(indice):
     return IGBPcode[indice-1]
 
 
-#if __name__ == "__main__":
-    
-    ########### test decodeFeatureMask ############################
+####################################################################################
+####################################################################################
 
-    
-    
+
+def lissage(df_in, size, variable):
+    """
+    PARAMETRES:
+
+    **df_in** (*pandas dataframe*): dataframe \n
+    **size** (*int impair*): dimension de la fenetre \n
+    **variableslist** (*list*): liste des variables a traiter \n
+    **variable** (*string*): variable de reference pour modifier les variables suivantes sur les memes indices
+
+    Renvoie une dataframe avec les memes dimensions
+
+    """
+    assert (size % 2 == 1), "La taille de la fenetre doit etre impaire"
+
+    dataframe = df_in.copy()
+    dataframe[variable] = median_filter(dataframe[variable].values, size=size)
+    nonmodif_idx = np.where(df_in[variable].values == dataframe[variable])[0]  # recherche des indices de valeurs non modifiees
+    modif_idx = np.where(df_in[variable].values != dataframe[variable])[0]  # recherche des indices de valeurs modifiees
+    for v in list(set(df_in.columns) - set([variable])):
+        mat = dataframe[v].values[:]
+        mat_out = np.zeros(mat.shape[0])
+        mat_out[:] = np.nan
+        for idx in modif_idx:
+            if idx-((size-1)/2) < 0:
+                diff_valeurs = np.abs(idx - (size / 2) )
+                mat_tmp = np.append(mat[:idx+(size / 2)+1], mat[-diff_valeurs:])  # rajout de valeurs de fin de matrice en debut pour eviter valeurs nulles
+                mat_out[idx] = np.median(mat_tmp)
+            elif idx + ((size - 1) / 2) + 1 > mat.shape[0]:
+                diff_valeurs = idx+(size/2)+1 - mat.shape[0]
+                mat_tmp = np.append(mat[idx - (size / 2):], mat[:diff_valeurs])  # rajout de valeurs de debut de matrice en fin pour eviter valeurs nulles
+                mat_out[idx] = np.median(mat_tmp)
+            else:
+                mat_out[idx] = np.median(mat[idx-(size/2):idx+(size/2)+1])
+            mat_out[nonmodif_idx] = mat[nonmodif_idx]
+        dataframe[v] = mat_out[:]
+    return dataframe

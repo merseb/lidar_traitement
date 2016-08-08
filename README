@@ -1,1 +1,80 @@
-traitement donnees lidar
+TRAITEMENT DES DONNEES LIDAR
+
+Arborescence du dossier lidar_traitement
+	> rep bin
+		--extraction_caliop_values.py
+		--concat_lidar.sh
+	> rep src
+		--LidarUtil.py (fonctions: Calcul_Nbpoints, indiceCouche, decodeFeatureMask, decodeIGBP, lissage)
+		--rolling_window.py (fonctions: extractData, ponderation, rolling_window, calcPonderation, distance, splitlist)
+	> rep zone_etude
+		--ensemble des fichiers lidar .hdf à traiter
+	> rep donnees_annexes
+		--fichiers netcdf modis, seviri-aerus, omaeruv, chimere
+	> rep out
+		--fichiers en sortie
+
+
+liste des modules:
+	pyhdf
+	netCDF4
+	time
+	numpy
+	pandas
+	glob
+	datetime
+	bisect
+	sys
+	subprocess
+	joblib
+	scipy
+
+
+Script principal extraction_caliop_values.py
+Il y a une partie concernant le pré-traitement dans une boucle parcourant la liste des fichiers(par date journaliere):
+	extraction de la 1ere couche valide (appel de la fonction indiceCouche)
+	supression des valeurs nulles
+	decodage int16 --> sous-categories (appel d'une fonction decodeFeatureMask)
+	decodage IGBP --> type de "sol/couvert spatial" (appel d'une fonction decodeIGBP)
+	calcul des altitudes corrigées des couches basse et haute à partir du DEM
+	filtre qualité excluant: CAD-Score < -20, ExtinctionQC_532 = 0 ou = 1, Feature_Optical_Depth_Uncertainty < 99,
+							suppression des subtypefeature non aerosols
+
+Ces donnees sont regroupees dans une dataframe par jour:
+	calcul du nombre de valeurs dans +- 0.5° de latitude à partir de chaque point lidar (appel de la fonction calcul_Nbpoints)
+	etape de lissage (appel de la fonction lissage)
+
+Les donnees sont ensuite regroupees dans une dataframe par pas de temps de njour: phase de traitement
+(16 jours correspond à la couverture de la zone par Calipso)
+	calcul de la concentration 
+	export au format csv pour chaque pas de temps
+	interpolation des variables lidar et extraction des stats pour les autres donnees: en appliquant une fenetre glissante
+	(appel de la fonction extractData cf infra)
+	export de l'ensemble des donnees traitees au format netcdf pour chaque pas de temps
+
+Appel du script concat_lidar.sh qui regroupe tous les .csv en lidar.csv et tous les .nc en lidar.nc
+
+
+LA fonction extractData distribue les différents jobs sur les n cpu disponibles pour les calculs de:
+	l'interpolation de chaque variable de chaque sous-categorie (appel des fonctions ponderation calcPonderation et distance)
+	calcul des stats pour chaque donnee externe(aod,aot, pdust)
+
+	
+Les parametres modifiables en debut de script:
+	la zone d'etude avec les x_min, x_max, y_min, y_max (par defaut -25.0, 57.01, -1.25, 51.01)
+	la fenetre de lissage w_lissage (par defaut 9 valeurs)
+	la fenetre glissante w_interp (par defaut 9 pixels)
+	le pas de temps ptemps (par defaut 16 jours)
+	la methode de ponderation (par defaut 'carreDistance' autre possibilite 'distance')
+	sous-categories (par defaut 'dust', polluted_dust')
+	la liste des donnees annexes (mettre le fichier dans le sous-repertoire donnees_annexes et renseigner les variables fnc..., var... et fichiers_ext)
+	la couche de reference pour l'extraction de la 1ere couche valide; les variables ajoutees à la suite sont prises en compte lors de l'etape de lissage
+
+
+Lancement du script:
+python 'chemin/vers/lidar_traitement/bin/extraction_caliop_values.py
+
+Le script se positionne dans le rep zone_etude pour traiter les donnees et aller chercher les donnees annexes dans le rep du meme nom.
+Les donnees en sortie sont envoyees dans le rep out.
+
+	

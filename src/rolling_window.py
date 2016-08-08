@@ -1,14 +1,9 @@
 # -*- coding: utf-8 -*-
 
-
 import numpy as np
 from netCDF4 import Dataset, date2index
-from joblib import Parallel, delayed, load, dump, Memory
+from joblib import Parallel, delayed
 import time
-import os
-from glob import glob
-import shutil
-import tempfile
 
 
 def splitlist(a, n):
@@ -19,132 +14,103 @@ def splitlist(a, n):
     return (a[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in xrange(n))
 
 
-def exportTXT(fichiers_ext, valeurs, date, prefix):
-    lidar_param = sorted(list(set(valeurs.keys()) - set([f[1] for f in fichiers_ext])))
-    with open('/home/mers/Bureau/teledm/donnees/lidar/calipso/caliop/out/'+str(date.date()).replace('-', '_')+'_info_interp_'+prefix+'.txt', 'w') as info:
-        for i in range(len(valeurs[lidar_param[0]][0])):
-            tmp = []
-            for lp in lidar_param:
-                tmp += ['interp_'+lp]
-                tmp += ['  ']
-                tmp += [valeurs[lp][0][i].tolist()]
-                tmp += ['  ']
-                tmp += ['lidar_'+lp]
-                try:
-                    tmp += valeurs[lp][1][i]
-                except ValueError:
-                    tmp += valeurs[lp][1][i].tolist()
-            for f in fichiers_ext:
-                tmp += ['  ///  ']
-                tmp += [f[1]]
-                tmp += ['  ']
-                tmp += valeurs[f[1]][i].tolist()
-            info.write(str(tmp)+'\n')
-
-
 def distance(xa, ya, xb, yb):
     """
     """
     return np.sqrt((xb-xa)**2 + (yb-ya)**2)
-    
+
 
 def calcPonderation(weight, valeurs):
     """
     """
-    vmoy = np.average(valeurs, weights=weight)
-    vmin = np.min(valeurs * weight)
-    vmax = np.max(valeurs * weight)
-    variance = np.average((valeurs-vmoy)**2, weights=weight)
+    vmoy = np.average(valeurs, axis=0, weights=weight)
+    vmin = np.min(valeurs.T * weight, axis=1)
+    vmax = np.max(valeurs.T * weight, axis=1)
+    variance = np.average((valeurs-vmoy)**2, axis=0, weights=weight)
     vstd = np.sqrt(variance)
-    return [np.asarray([valeurs.shape[0], vmoy, vmin, vmax, vstd]), valeurs]
+    return np.append(valeurs.shape[0],(vmoy, vmin, vmax, vstd))
 
 
-def ponderation(ponderation_type, lidar_parametres, list_df, coord, window, reso):
+def ponderation(ponderation_type, lidar_parametres, list_df, coords, window, reso):
     """
-    Fonction qui retourne pour le pixel de coordonnees(coords) la valeur ponderee
-    ainsi que la liste/valeur des points lidar utilises(idx_lidar)
+    Fonction qui retourne pour les pixels de coordonnees(coords) la valeur ponderee
     """
-    x_px = coord[0]
-    y_px = coord[1]
-    # definition de la fenetre
-    x_min = x_px - reso*(window/2)
-    x_max = x_px + reso*(window/2)
-    y_min = y_px - reso*(window/2)
-    y_max = y_px + reso*(window/2)
-    v_out = []
-    for df in list_df:
-        longitude = df.Longitude.values
-        latitude = df.Latitude.values
-        ##### recherche des valeurs dans la fenetre
-        idx_lidar = list(np.where((latitude >= y_min) & (latitude < y_max) & (longitude >= x_min) & (longitude < x_max))[0])
-        dist = np.asarray([distance(longitude[i], latitude[i], x_px, y_px) for i in idx_lidar])
-        ##### calcul de la distance de chaque point lidar au pixel(x_px,y_px) pour chaque parametre lidar
-        if len(idx_lidar):
-            if ponderation_type == 'CarreDistance':            
-                weight = (1/dist**2)/np.sum(1/dist**2)
+    v = []
+    app = v.append
+    for coord in coords[:]:
+        x_px = coord[0]
+        y_px = coord[1]
+        # definition de la fenetre
+        x_min = x_px - reso*(window/2)
+        x_max = x_px + reso*(window/2)
+        y_min = y_px - reso*(window/2)
+        y_max = y_px + reso*(window/2)
+        # pour chaque sous-categorie:
+        for df in list_df:
+            longitude = df.Longitude.values
+            latitude = df.Latitude.values
+            ##### recherche des valeurs dans la fenetre
+            idx_lidar = list(np.where((latitude >= y_min) & (latitude < y_max) & (longitude >= x_min) & (longitude < x_max))[0])
+            dist = np.asarray([distance(longitude[i], latitude[i], x_px, y_px) for i in idx_lidar])
+            ##### calcul de la distance de chaque point lidar au pixel(x_px,y_px) pour chaque parametre lidar
+            if len(idx_lidar):
+                if ponderation_type == 'CarreDistance':            
+                    weight = (1/dist**2)/np.sum(1/dist**2)
+                else:
+                    weight = (1/dist)/np.sum(1/dist)
+                app(calcPonderation(weight, df[lidar_parametres].ix[idx_lidar].values))
             else:
-                weight = (1/dist)/np.sum(1/dist)
-            v_out.append([calcPonderation(weight, df[lp].ix[idx_lidar].values) for lp in lidar_parametres])
-        else:
-            v_out.append([[np.array([np.nan]*5),[np.nan]]]*len(lidar_parametres))
-    return v_out
+                arr_nan = np.zeros((1 + len(lidar_parametres)*4))
+                arr_nan[:] = np.nan
+                app(arr_nan)
+    return [np.vstack([v[i] for i in range(0,len(v), len(list_df))]), np.vstack([v[i] for i in range(1,len(v), len(list_df))])]
 
 
-
-def ponderation_helper(ponderation_type, lidar_parametres, list_df, coords, window, reso):
-    """
-    Fonction qui permet d'envoyer la fonction ponderation sous forme de list comprehension
-    """
-    return [ponderation(ponderation_type, lidar_parametres,list_df, px, window, reso) for px in coords]
-
-
-def extractData_helper(matrice, longitude, latitude, coords, window, reso):
-    """
-    Fonction qui permet d'envoyer la fonction rolling_window sous forme de list comprehension
-    """
-    return [rolling_window(matrice, longitude, latitude, coord, window, reso) for coord in coords]
-
-
-def rolling_window(matrice, longitudes, latitudes, coord, window, reso):
+def rolling_window(matrice, longitudes, latitudes, coords, window, reso):
     reso_init = np.abs(np.round(np.mean(np.diff(latitudes)), 2))
-    stats = np.zeros(5)
-    stats[:] = np.nan
-    x_px = coord[0]
-    y_px = coord[1]
-    x_min = x_px - (reso * (window / 2))
-    x_max = x_px + (reso * (window / 2))
-    y_min = y_px - (reso * (window / 2))
-    y_max = y_px + (reso * (window / 2))
+    list_stats = []
+    app = list_stats.append
+    for coord in coords:
+        stats = np.zeros(5)
+        stats[:] = np.nan
+        x_px = coord[0]
+        y_px = coord[1]
+        x_min = x_px - (reso * (window / 2))
+        x_max = x_px + (reso * (window / 2))
+        y_min = y_px - (reso * (window / 2))
+        y_max = y_px + (reso * (window / 2))
 
-    if x_min > longitudes[-1] or x_max < longitudes[0] or y_min < latitudes[-1] or y_max > latitudes[0]:
-        return stats
-    else:
-        if x_min >= longitudes[0]:
-            j0 = np.int(np.abs(longitudes[0] - x_min) / reso_init)
+        if x_min > longitudes[-1] or x_max < longitudes[0] or y_min < latitudes[-1] or y_max > latitudes[0]:
+            app(stats)
         else:
-            j0 = 0
-        if x_max <= longitudes[-1]:
-            j1 = np.int(np.abs(longitudes[0] - x_max) / reso_init)
-        else:
-            j1 = longitudes.shape[0] + 1
+            if x_min >= longitudes[0]:
+                j0 = np.int(np.abs(longitudes[0] - x_min) / reso_init)
+            else:
+                j0 = 0
+            if x_max <= longitudes[-1]:
+                j1 = np.int(np.abs(longitudes[0] - x_max) / reso_init)
+            else:
+                j1 = longitudes.shape[0] + 1
+    
+            if y_min > latitudes[-1]:
+                i1 = np.int(np.abs(latitudes[0] - y_min) / reso_init)
+            else:
+                i1 = latitudes.shape[0]+1
+            if y_max < latitudes[0]:
+                i0 = np.int(np.abs(latitudes[0] - y_max) / reso_init)
+            else:
+                i0 = 0
+            m = matrice[i0:i1, j0:j1]
+            if m.size:
+                stats[0] = 100 * (np.count_nonzero(~np.isnan(m)) / float(m.shape[0] * m.shape[1]))
+                if stats[0] != 0:
+                    stats[1] = np.nanmean(m)
+                    stats[2] = np.nanmin(m)
+                    stats[3] = np.nanmax(m)
+                    stats[4] = np.nanstd(m)
+            app(stats)
+    return np.asarray(list_stats)
 
-        if y_min > latitudes[-1]:
-            i1 = np.int(np.abs(latitudes[0] - y_min) / reso_init)
-        else:
-            i1 = latitudes.shape[0]+1
-        if y_max < latitudes[0]:
-            i0 = np.int(np.abs(latitudes[0] - y_max) / reso_init)
-        else:
-            i0 = 0
-        m = matrice[i0:i1, j0:j1]
-        if m.size:
-            stats[0] = 100 * (np.count_nonzero(~np.isnan(m)) / float(m.shape[0] * m.shape[1]))
-            if stats[0] != 0:
-                stats[1] = np.nanmean(m)
-                stats[2] = np.nanmin(m)
-                stats[3] = np.nanmax(m)
-                stats[4] = np.nanstd(m)
-        return stats
 
 def extractData(ponderation_type, lidar_parametres, lidar_df, ext_files, date, window, cpu, x, y, reso):
     """
@@ -171,8 +137,6 @@ def extractData(ponderation_type, lidar_parametres, lidar_df, ext_files, date, w
     **reso** (*float*): resolution spatiale
 
     """
-    tmpdir = os.getcwd()
-
     ##### liste de coordonnees
     xx, yy = np.meshgrid(x, y) # produit cartesien des lon/lat
     xy = zip(xx.flatten(), yy.flatten()) # liste de tuples(lon/lat)
@@ -187,16 +151,14 @@ def extractData(ponderation_type, lidar_parametres, lidar_df, ext_files, date, w
     subtypes = list(lidar_df.FeatureSubtype.unique())  # liste des sous-categories
     list_df = [ lidar_df[lidar_df.FeatureSubtype == st].reset_index(drop=True) for st in subtypes]  # liste des df par sous-categorie
     t1 = time.time()
-    interp_values = Parallel(n_jobs=cpu)(delayed(ponderation_helper)(ponderation_type, lidar_parametres, list_df, lcoords, window, reso) for lcoords in list_jobs)
-    ##### 'reconstruction' et chargement des matrices et listes dans le dictionnaire
-    tmp = []
-    for i in range(cpu):
-        tmp += interp_values[i]
-    for st in range(len(subtypes)):
+    interp_values = Parallel(n_jobs=cpu)(delayed(ponderation)(ponderation_type, lidar_parametres, list_df, lcoords, window, reso) for lcoords in list_jobs)
+    ##### 'reconstruction' et chargement des matrices dans le dictionnaire
+    for s in range(len(subtypes)):
+        m = np.vstack((interp_values[i][s] for i in range(cpu)))
+        list_values[subtypes[s]+'_nb_lidar_points'] = m[:, 0]
         for p in range(len(lidar_parametres)):
-            list_values[subtypes[st]+'_'+lidar_parametres[p]] = [np.vstack([tmp[i][st][p][0] for i in range(len(xy))]), [tmp[i][st][p][1] for i in range(len(xy))]]
-    t2 = time.time() - t1
-    print t2, ' sec'
+            list_values[subtypes[s]+'_'+lidar_parametres[p]] = np.vstack((m[:, p + i] for i in range(1, m.shape[1] - 1, len(lidar_parametres)))).T
+    print('%s sec' % str(time.time() - t1))
     #####
 
     ##### boucle sur la liste des fichiers externes f est une liste comprenant l'adresse du fichier et le nom de la variable
@@ -214,26 +176,12 @@ def extractData(ponderation_type, lidar_parametres, lidar_df, ext_files, date, w
             mat = np.ma.filled(nc.variables[f[1]][id_date,0, ...], np.nan)  # variable 4d: t,z,y,x
         else:
             mat = np.ma.filled(nc.variables[f[1]][id_date, ...], np.nan)  # variable 3d: t,y,x
-        filename_mat = os.path.join(tempfile.mkdtemp(prefix='temporaire_', dir=tmpdir), 'newfile.dat')
-        m = np.memmap(filename_mat, dtype= mat.dtype, mode='w+', shape=mat.shape)
-        m[:] = mat[:]
         lg = nc.variables['longitude'][:]
-        filename_lg = os.path.join(tempfile.mkdtemp(prefix='temporaire_', dir=tmpdir), 'newfile.dat')
-        lons = np.memmap(filename_lg, dtype= mat.dtype, mode='w+', shape=lg.shape)
-        lons[:] = lg[:]
         lt = nc.variables['latitude'][:]
-        filename_lt= os.path.join(tempfile.mkdtemp(prefix='temporaire_', dir=tmpdir), 'newfile.dat')
-        lats = np.memmap(filename_lt, dtype= mat.dtype, mode='w+', shape=lt.shape)
-        lats[:] = lt[:]
         nc.close()
         ##### parallelisation
-        values = Parallel(n_jobs=cpu)(delayed(extractData_helper)(m, lons, lats, lcoords, window, reso) for lcoords in list_jobs)
-        t2 = time.time() - t1
-        print t2, ' sec'
+        values = Parallel(n_jobs=cpu)(delayed(rolling_window)(mat, lg, lt, lcoords, window, reso) for lcoords in list_jobs)
+        print('%s sec' % str(time.time() - t1))
         list_values[f[1]] = np.vstack(values)  # empilement des matrices en sortie
-    dir_list = glob.glob(os.path.join(tmpdir, "temporaire_*"))
-    for path in dir_list:
-        if os.path.isdir(path):
-            shutil.rmtree(path)
     #####
     return list_values

@@ -10,15 +10,15 @@ from datetime import datetime, timedelta
 from bisect import bisect_left
 import os
 import sys
-import multiprocessing
+from subprocess import Popen
+from joblib import cpu_count
 
 # import des fonctions complémentaires
-path = '/'.join(os.path.abspath(__file__).split('/')[:-2])
+#path = '/'.join(os.path.abspath(__file__).split('/')[:-2])
+path = os.getcwd()
 sys.path.append(path+"/src")
-from lissage import lissage
 from rolling_window import *
-from decodeFeatureMask import decodeFeatureMask
-from LidarUtil import *  #calcul_Nbpoints, points2matrice, indicevalue, array2raster, splitlist
+from LidarUtil import *
 
 
 #########################################################################################################################
@@ -77,8 +77,11 @@ var3 = 'UVAerosolIndex'
 fnc4 = path_ext+'chimere02_r018_16d_subset.nc'
 var4 = 'mean_pDUST'
 
+#fnc... = path_ext+'nom_du_fichier'
+#var... = 'nom_de_la_variable'
+# Ajouter fnc... et var... dans la liste fichiers_ext
 fichiers_ext = [[fnc1, var1], [fnc2, var2], [fnc3, var3], [fnc4, var4]]
-var_ext = [var1, var2, var3, var4]
+var_ext = [v[1] for v in fichiers_ext]
 
 
 
@@ -88,22 +91,28 @@ var_ext = [var1, var2, var3, var4]
 # Les variables ajoutées a la suite seront prises en compte lors de l'etape de lissage
 layers_ref = ['Layer_Base_Altitude']
 
+
+
+
 # liste des variables/parametres extraits de chaque fichier lidar
 varlist = ["IGBP_Surface_Type", "Day_Night_Flag", "DEM_Surface_Elevation", "Column_Optical_Depth_Aerosols_532", "Feature_Optical_Depth_532","Feature_Optical_Depth_Uncertainty_532", "ExtinctionQC_532", "CAD_Score", "Feature_Classification_Flags", "Number_Layers_Found", "Layer_Top_Altitude", "Layer_Base_Altitude"]
 
+# Variables/parametres sur lesquelles lissees
+param_lissage = ['Column_Optical_Depth_Aerosols_532', 'Base_corr', 'Top_corr', 'Layer_Base_Altitude', 'Layer_Top_Altitude', 'Feature_Optical_Depth_532', 'Feature_Optical_Depth_Uncertainty_532', 'ExtinctionQC_532']
+
 # liste des variables/parametres interpolees pour chaque sous-type
-lidar_params = ["Column_Optical_Depth_Aerosols_532", "Feature_Optical_Depth_532", "Feature_Optical_Depth_Uncertainty_532", "Top_corr", "Base_corr", "Concentration_Aerosols"]
+params_export = ["Column_Optical_Depth_Aerosols_532", "Feature_Optical_Depth_532", "Feature_Optical_Depth_Uncertainty_532", "Top_corr", "Base_corr", "Concentration_Aerosols"]
 
 
 
 
-cpu = 3 #multiprocessing.cpu_count() - 1 # nombre de processeurs pour la parallelisation
+cpu = 3  # joblib.cpu_count() - 1 # nombre de processeurs pour la parallelisation
 
 #########################################################################################################################
 
 #######################################################################
 ########## traitement dates ###########################################
-# creation de pas de temps de n jours(ptemps) en partant de 1900-01-01
+# creation de pas de temps de n jours(ptemps) en commencant le 1900-01-01
 
 files_in = sorted(glob("*.hdf"))
 if not files_in:
@@ -116,7 +125,7 @@ except ValueError:
     print 'Impossible de lire la date du fichier'
     sys.exit()
 series = pd.date_range('1900-01-01',fin, freq="d").tolist() # serie de dates de 1900-01-01 a date de fin des fichiers 
-dt_nday = {series[i]:series[i:i+ptemps] for i in range(0,len(series),ptemps)} # dict regroupant les dates par serie de n jours(ptemps) , la clef correspond a la 1ere date de la periode de n jours
+dt_nday = {series[i]:series[i:i+ptemps] for i in range(0,len(series),ptemps)} # dict regroupant les dates par serie de n jours(ptemps) , la clef du dict correspond a la 1ere date chaque periode de n jours
 idt = bisect_left(sorted(dt_nday.keys()),debut) - 1 # a partir de la 1ere date de la liste de fichiers determination de la clef inferieure la plus proche dans le dict 
 idt_series = series.index(sorted(dt_nday.keys())[idt]) # index de la date de la 1ere periode de njours dans la serie de dates depuis 1900-01-01
 files = {n:sorted(glob("*"+n.strftime('%Y-%m-%d')+"*.hdf")) for n in series[idt_series:]} # extraction des fichiers dans un dict, chaque entree corespond a une date 
@@ -126,17 +135,15 @@ files = {n:sorted(glob("*"+n.strftime('%Y-%m-%d')+"*.hdf")) for n in series[idt_
 t1 = time.time()
 # boucle pour chaque periode de n jours
 for k in sorted(dt_nday.keys())[idt+2:idt+3]:
+    t2 = time.time()
     print "\n\n\n###########  periode   du", k.date(), " au ", (k + timedelta(days=ptemps-1)).date()
     print "#########################################################"
     df_nday = pd.DataFrame()  # creation d une dataframe pour n jours
-
     #####  boucle pour chaque date de la periode de n jours
     for day in dt_nday[k][:]:
         df_day = pd.DataFrame() # initialisation dataframe pour une orbite/jour
         ##### boucle pour chaque fichier de la date
-        #print "\n#####DATE  ", day
         for f in files[day][:]:
-            #print f
             hdf = SD(f, SDC.READ)
             df_file = pd.DataFrame()  # dataframe temporaire reinitialisee pour chaque fichier
             df_file["Latitude"] = hdf.select('Latitude')[:, 1]
@@ -174,10 +181,8 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
             hdf.end()
             df_file = df_file[df_file.Layer_Base_Altitude != -9999]  # suppression des points sans valeur
 
-            ##### Conversion int16/int, retour des resultats dans une matrice(n,8)
-            #int16_flags = list(df_file.Feature_Classification_Flags.values)  # liste des flags format int16
-            #if int16_flags:
-            df_file['FeatureSubtype'] = df_file.Feature_Classification_Flags.apply(decodeFeatureMask)   #np.asarray([decodeFeatureMask(fg) for fg in int16_flags])
+            ##### Conversion int16 en sous-categories
+            df_file['FeatureSubtype'] = df_file.Feature_Classification_Flags.apply(decodeFeatureMask)
             #####
             
             ##### conversion code IGBP denomination 
@@ -200,22 +205,16 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
         try:
             for subtype in df_day.FeatureSubtype.unique().tolist():
                 matrice_latitude = df_day.Latitude[df_day.FeatureSubtype == subtype].values
-                df_day[df_day.FeatureSubtype == subtype ].loc[:, 'nb_values_window_1deg'] = [calcul_Nbpoints(matrice_latitude, vx) for vx in list(matrice_latitude)]
+                df_day['nb_values_window_1deg'][df_day.FeatureSubtype == subtype ].values[:] = [calcul_Nbpoints(matrice_latitude, vx) for vx in list(matrice_latitude)]
                 ##### lissage (mediane) n fois en fct du nombre de variables choisies(layers_ref)
                 for lref in layers_ref:
-                    #df_day.ix[df_day.FeatureSubtype == subtype] = lissage(df_day[df_day.FeatureSubtype == subtype],w_lissage,lidar_params[:-1], lref)
-                    param_lissage = ['Column_Optical_Depth_Aerosols_532', 'Base_corr', 'Top_corr', 'Layer_Base_Altitude', 'Layer_Top_Altitude', 'Feature_Optical_Depth_532', 'Feature_Optical_Depth_Uncertainty_532', 'ExtinctionQC_532']
-                    tmp = lissage(df_day[param_lissage][df_day.FeatureSubtype == subtype], w_lissage, lref)
-                    for p in param_lissage:
-                        df_day[df_day.FeatureSubtype == subtype].loc[:, p] =  tmp[p].values
-                    #df_day = df_day.append(lissage(df_day[df_day.FeatureSubtype == subtype],w_lissage,lidar_params[:-1], lref))
+                    df_day[df_day.FeatureSubtype == subtype][param_lissage].values[:] = lissage(df_day[df_day.FeatureSubtype == subtype][param_lissage], w_lissage, lref).values
             #####
     
             ##### ajout de la dataframe par orbite, correspondant a l'ensemble des variables lidar filtrées, dans la dataframe de n jours
             lp = list(set(df_day.columns) - set(['Feature_Classification_Flags', 'Layer_Top_Altitude', 'Layer_Base_Altitude']))
             df_nday = df_nday.append(df_day[lp][(df_day.Latitude >= yo.min()) & (df_day.Latitude <= yo.max()) & (df_day.Longitude >= xo.min()) & (df_day.Longitude <= xo.max())],ignore_index=True) # extraction de la zone d'etude
         except AttributeError:
-            #print day,' sans valeurs'
             pass
         ##############################################################################################################################################
                                             ############# fin des pre-traitements ######################
@@ -231,13 +230,13 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
     ##### export format csv
     df_nday.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'.csv', index=False)  
     #####
-    
+    print('%s sec' % str(time.time()-t2))
     ##### interpolation
-    output = extractData(methode_ponderation, lidar_params, df_nday[df_nday.FeatureSubtype.isin(subtypes)].reset_index(drop=True), fichiers_ext[:], k, w_interp, cpu, xo, yo, reso_spatiale)
+    output = extractData(methode_ponderation, params_export, df_nday[df_nday.FeatureSubtype.isin(subtypes)].reset_index(drop=True), fichiers_ext[:], k, w_interp, cpu, xo, yo, reso_spatiale)
     #####
     
     ##### export format csv
-    #exportTXT(lidar_params, fichiers_ext, output, k, 'dust')
+    #exportTXT(params_export, fichiers_ext, output, k, 'dust')
     #####
 
     ##############################
@@ -272,27 +271,30 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
     lons[:] = xo[:]
     fillvalue = np.nan
 
-    idate = 0  # date2index(k,tp)  # indice de la date de la donnee inseree dans le netcdf
-    for key in sorted(list(set(output.keys()) - set(var_ext))):
-        calc = ['_nb_lidar_values', '', '_min', '_max', '_std']
-        for j in range(5):
-            arr = output[key][0][:, j].reshape(yo.shape[0], -1)
-            varnew = ncnew.createVariable(key+calc[j], 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
-            varnew.standard_name = key+calc[j]
-            varnew[idate,...] = arr
+    idate = 0  # date2index(k,tp)  # indice de la date de la donnee dans le netcdf
+    lidar_keys = sorted(list(set(output.keys()) - set(var_ext)))
+    for key in lidar_keys:
+        if 'nb_lidar_points' in key:
+            varnew = ncnew.createVariable(key, 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
+            varnew.standard_name = key
+            varnew[idate,...] = output[key].reshape(yo.shape[0], -1)
+        else:
+            calc = ['', '_min', '_max', '_std']
+            for j in range(4):
+                varnew = ncnew.createVariable(key+calc[j], 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
+                varnew.standard_name = key+calc[j]
+                varnew[idate, ...] = output[key][:, j].reshape(yo.shape[0], -1)
     for key in var_ext:
         calc = ['_pct_px', '_mean', '_min', '_max', '_std']
         for j in range(5):
-            arr = output[key][:,j].reshape(yo.shape[0],-1)
             if key == 'mean_pDUST':
                 varnew = ncnew.createVariable(key[5:]+calc[j], 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
                 varnew.standard_name = key[5:]+calc[j]
-                varnew[idate,...] = arr
             else:
                 varnew = ncnew.createVariable(key+calc[j], 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
                 varnew.standard_name = key+calc[j]
-                varnew[idate,...] = arr
+            varnew[idate,...] = output[key][:,j].reshape(yo.shape[0],-1)
 
     ncnew.close()
-t2 = time.time() - t1
-print str(k),' ',str(t2),' sec'
+print('%s sec' % str(time.time() - t1))
+popen = Popen([path+'/bin/concat_lidar.sh', ddir_out])
