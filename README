@@ -69,6 +69,8 @@ Les parametres modifiables en debut de script:
 	sous-categories (par defaut 'dust', polluted_dust')
 	la liste des donnees annexes (mettre le fichier dans le sous-repertoire donnees_annexes et renseigner les variables fnc..., var... et fichiers_ext)
 	la couche de reference pour l'extraction de la 1ere couche valide; les variables ajoutees à la suite sont prises en compte lors de l'etape de lissage
+	(par defaut Layer_Base_Altitude et Layer_Top_Altitude)
+	le nombre de processeurs (cpu) (par defaut 3 proc)
 
 
 Lancement du script:

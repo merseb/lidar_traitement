@@ -52,13 +52,13 @@ xo = np.arange(x_min, x_max, reso_spatiale)  #longitudes du .nc
 yo = np.arange(y_min, y_max, reso_spatiale)[::-1]  #latitudes du .nc
 
 
-w_lissage = 9 # fenetre pour fonction de lissage
-w_interp = 9 # fenetre glissante pour l'interpolation
-
+w_lissage = 9 # impair fenetre pour fonction de lissage
+w_interp = 9 # 3 6 9 12 15 ... fenetre glissante pour l'interpolation
+fenetre = str(w_interp)+'px'
 
 
 ptemps = 16  # pas de temps
-methode_ponderation = 'carreDistance' #'distance', 'carreDistance'
+methode_ponderation = 'carredistance' #'distance', 'carredistance'
 subtypes = ['dust', 'polluted_dust'] # sous-types d'aerosols extraits des donnees lidar
 
 
@@ -89,7 +89,7 @@ var_ext = [v[1] for v in fichiers_ext]
 
 # !!!!!! la 1ere variable de la liste layers_ref sert de couche de reference pour l'extraction de la premiere couche valide du profil lidar et egalement utilisee pour l'etape de lissage
 # Les variables ajoutées a la suite seront prises en compte lors de l'etape de lissage
-layers_ref = ['Layer_Base_Altitude']
+layers_ref = ['Layer_Base_Altitude', 'Layer_Top_Altitude']
 
 
 
@@ -134,7 +134,7 @@ files = {n:sorted(glob("*"+n.strftime('%Y-%m-%d')+"*.hdf")) for n in series[idt_
 
 t1 = time.time()
 # boucle pour chaque periode de n jours
-for k in sorted(dt_nday.keys())[idt+2:idt+3]:
+for k in sorted(dt_nday.keys())[idt:]:
     t2 = time.time()
     print "\n\n\n###########  periode   du", k.date(), " au ", (k + timedelta(days=ptemps-1)).date()
     print "#########################################################"
@@ -228,7 +228,7 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
     #####
     
     ##### export format csv
-    df_nday.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'.csv', index=False)  
+    df_nday.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+methode_ponderation+'_'+fenetre+'.csv', index=False)  
     #####
     print('%s sec' % str(time.time()-t2))
     ##### interpolation
@@ -244,7 +244,7 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
     u_time = 'hours since 1900-01-01 00:00:00.0'
     dates = [date2num(k, u_time)]  # date2num(sorted(dt_nday.keys())[idt:],u_time)
     
-    ncnew = Dataset(ddir_out+'/'+str(k.date()).replace('-','_')+'_lidar.nc', 'w')
+    ncnew = Dataset(ddir_out+'/'+str(k.date()).replace('-','_')+'_lidar_'+methode_ponderation+'_'+fenetre+'.nc', 'w')
     # dimensions##################
     ncnew.createDimension('time', None)
     ncnew.createDimension('latitude', len(yo))
@@ -297,4 +297,5 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
 
     ncnew.close()
 print('%s sec' % str(time.time() - t1))
-popen = Popen([path+'/bin/concat_lidar.sh', ddir_out])
+
+popen = Popen([path+'/bin/concat_lidar.sh', ddir_out, methode_ponderation, fenetre])

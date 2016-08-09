@@ -54,7 +54,7 @@ def ponderation(ponderation_type, lidar_parametres, list_df, coords, window, res
             dist = np.asarray([distance(longitude[i], latitude[i], x_px, y_px) for i in idx_lidar])
             ##### calcul de la distance de chaque point lidar au pixel(x_px,y_px) pour chaque parametre lidar
             if len(idx_lidar):
-                if ponderation_type == 'CarreDistance':            
+                if ponderation_type == 'carredistance':            
                     weight = (1/dist**2)/np.sum(1/dist**2)
                 else:
                     weight = (1/dist)/np.sum(1/dist)
