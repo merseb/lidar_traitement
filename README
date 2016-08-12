@@ -3,8 +3,8 @@ TRAITEMENT DES DONNEES LIDAR
 Arborescence du dossier lidar_traitement
 	> rep bin
 		--extraction_caliop_values.py
-		--concat_lidar.sh
 	> rep src
+		--concat_lidar.sh
 		--LidarUtil.py (fonctions: Calcul_Nbpoints, indiceCouche, decodeFeatureMask, decodeIGBP, lissage)
 		--rolling_window.py (fonctions: extractData, ponderation, rolling_window, calcPonderation, distance, splitlist)
 	> rep zone_etude
@@ -42,7 +42,7 @@ Il y a une partie concernant le pré-traitement dans une boucle parcourant la li
 
 Ces donnees sont regroupees dans une dataframe par jour:
 	calcul du nombre de valeurs dans +- 0.5° de latitude à partir de chaque point lidar (appel de la fonction calcul_Nbpoints)
-	etape de lissage (appel de la fonction lissage)
+	etape de lissage (appel de la fonction lissage) par defaut à partir de Layer_Base_Altitude et Layer_Top_Altitude
 
 Les donnees sont ensuite regroupees dans une dataframe par pas de temps de njour: phase de traitement
 (16 jours correspond à la couverture de la zone par Calipso)
@@ -53,7 +53,10 @@ Les donnees sont ensuite regroupees dans une dataframe par pas de temps de njour
 	export de l'ensemble des donnees traitees au format netcdf pour chaque pas de temps
 
 Appel du script concat_lidar.sh qui regroupe tous les .csv en lidar.csv et tous les .nc en lidar.nc
-
+Variables en sortie:
+	donnees_annexes : mean, min, max, std, pourcentage de pixels 
+	lidar : Column_Optical_Depth_Aerosols_532, Feature_Optical_Depth_532, Feature_Optical_Depth_Uncertainty_532,
+			Top_corr, Base_corr, Concentration_Aerosols + min, max, std pour chacune des variables
 
 LA fonction extractData distribue les différents jobs sur les n cpu disponibles pour les calculs de:
 	l'interpolation de chaque variable de chaque sous-categorie (appel des fonctions ponderation calcPonderation et distance)

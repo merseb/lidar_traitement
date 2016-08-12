@@ -228,11 +228,11 @@ for k in sorted(dt_nday.keys())[idt:]:
     #####
     
     ##### export format csv
-    df_nday.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+methode_ponderation+'_'+fenetre+'.csv', index=False)  
+    df_nday.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+str(ptemps)+'d1.csv', index=False)  
     #####
     print('%s sec' % str(time.time()-t2))
     ##### interpolation
-    output = extractData(methode_ponderation, params_export, df_nday[df_nday.FeatureSubtype.isin(subtypes)].reset_index(drop=True), fichiers_ext[:], k, w_interp, cpu, xo, yo, reso_spatiale)
+#    output = extractData(methode_ponderation, params_export, df_nday[df_nday.FeatureSubtype.isin(subtypes)].reset_index(drop=True), fichiers_ext[:], k, w_interp, cpu, xo, yo, reso_spatiale)
     #####
     
     ##### export format csv
@@ -244,7 +244,7 @@ for k in sorted(dt_nday.keys())[idt:]:
     u_time = 'hours since 1900-01-01 00:00:00.0'
     dates = [date2num(k, u_time)]  # date2num(sorted(dt_nday.keys())[idt:],u_time)
     
-    ncnew = Dataset(ddir_out+'/'+str(k.date()).replace('-','_')+'_lidar_'+methode_ponderation+'_'+fenetre+'.nc', 'w')
+    ncnew = Dataset(ddir_out+'/'+str(k.date()).replace('-','_')+'_lidar_'+methode_ponderation+'_'+fenetre+'_'+str(ptemps)+'d.nc', 'w')
     # dimensions##################
     ncnew.createDimension('time', None)
     ncnew.createDimension('latitude', len(yo))
@@ -298,4 +298,8 @@ for k in sorted(dt_nday.keys())[idt:]:
     ncnew.close()
 print('%s sec' % str(time.time() - t1))
 
-popen = Popen([path+'/bin/concat_lidar.sh', ddir_out, methode_ponderation, fenetre])
+try:
+    year = sorted(dt_nday.keys())[idt + 1].year
+except IndexError:
+    year = sorted(dt_nday.keys())[idt].year
+popen = Popen([path+'/src/concat_lidar.sh', ddir_out, year, methode_ponderation, fenetre, ptemps])
