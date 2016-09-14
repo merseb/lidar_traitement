@@ -37,6 +37,7 @@ def ponderation(ponderation_type, lidar_parametres, list_df, coords, window, res
     """
     v = []
     app = v.append
+    
     for coord in coords[:]:
         x_px = coord[0]
         y_px = coord[1]
@@ -45,26 +46,116 @@ def ponderation(ponderation_type, lidar_parametres, list_df, coords, window, res
         x_max = x_px + reso*(window/2)
         y_min = y_px - reso*(window/2)
         y_max = y_px + reso*(window/2)
+
         # pour chaque sous-categorie:
         for df in list_df:
+            arr = np.asarray([])
             longitude = df.Longitude.values
             latitude = df.Latitude.values
-            ##### recherche des valeurs dans la fenetre
+            ##### recherche des indices des valeurs de lat/lon comprises dans le "pixel" de coord (x_px,y_px)
+            idx = np.where((latitude >= y_px - 0.25) & (latitude < y_px) & (longitude >= x_px) & (longitude < x_px + 0.25))[0]
+            
+            if idx.size:
+                arr = np.append(arr, df[lidar_parametres].ix[idx].mean().values)
+            else:
+                arr = np.append(arr, np.asarray([np.nan]*len(lidar_parametres)))
+            ##### recherche des indices de valeurs lidar dans la fenetre
             idx_lidar = list(np.where((latitude >= y_min) & (latitude < y_max) & (longitude >= x_min) & (longitude < x_max))[0])
             dist = np.asarray([distance(longitude[i], latitude[i], x_px, y_px) for i in idx_lidar])
+            app(arr)
             ##### calcul de la distance de chaque point lidar au pixel(x_px,y_px) pour chaque parametre lidar
             if len(idx_lidar):
                 if ponderation_type == 'carredistance':            
                     weight = (1/dist**2)/np.sum(1/dist**2)
                 else:
                     weight = (1/dist)/np.sum(1/dist)
-                app(calcPonderation(weight, df[lidar_parametres].ix[idx_lidar].values))
+                arr2 = np.append(arr2, calcPonderation(weight, df[lidar_parametres].ix[idx_lidar].values))
             else:
                 arr_nan = np.zeros((1 + len(lidar_parametres)*4))
                 arr_nan[:] = np.nan
-                app(arr_nan)
+                arr2 = np.append(arr2, arr_nan)
+            app(arr2)
+    #### retourne pour chaque sous-categorie array([nb_pixel, vmoy, vmin, vmax, vstd])
     return [np.vstack([v[i] for i in range(0,len(v), len(list_df))]), np.vstack([v[i] for i in range(1,len(v), len(list_df))])]
 
+def ponderation2(ponderation_type, lidar_parametres, lidar_df, subtypes, coords, window, reso):
+    """
+    Fonction qui retourne pour les pixels de coordonnees(coords) la valeur ponderee
+    """
+    
+    longitude = lidar_df.Longitude.values
+    latitude = lidar_df.Latitude.values
+
+    v = []
+    app = v.append
+    arr = np.asarray([])
+    arr2 = np.asarray([])
+    for coord in coords[857:858]: #[850:860]:
+        x_px = coord[0]
+        y_px = coord[1]
+        # definition de la fenetre
+        x_min = x_px - reso*(window/2)
+        x_max = x_px + reso*(window/2)
+        y_min = y_px - reso*(window/2)
+        y_max = y_px + reso*(window/2)
+        ##### recherche des indices des valeurs lidar comprises dans le "pixel" de coord (x_px,y_px)
+        idx_px = np.where((latitude >= y_px - 0.25) & (latitude < y_px) & (longitude >= x_px) & (longitude < x_px + 0.25))[0]
+        ##### recherche des indices de valeurs lidar dans la fenetre
+        idx_wdw = list(np.where((latitude >= y_min) & (latitude < y_max) & (longitude >= x_min) & (longitude < x_max))[0])
+        if (idx_px.size) or (len(idx_wdw)):
+            for subtype in subtypes:
+                df_subT = lidar_df[lidar_df.FeatureSubtype == subtype]
+                if idx_px.size:
+                    arr = np.append(arr, df_subT[lidar_parametres].ix[idx_px][subtype].mean().values)
+                else:
+                    arr = np.append(arr, np.asarray([np.nan]*len(lidar_parametres)))
+                app(arr)
+                ##### calcul de la distance de chaque point lidar au pixel(x_px,y_px) pour chaque parametre lidar
+                if len(idx_wdw):
+                    subT_lon = df_subT.Longitude
+                    subT_lat = df_subT.Latitude
+                    dist = np.asarray([distance(subT_lon.ix[i], subT_lat.ix[i], x_px, y_px) for i in idx_wdw])
+                    if ponderation_type == 'carredistance':            
+                        weight = (1/dist**2)/np.sum(1/dist**2)
+                    else:
+                        weight = (1/dist)/np.sum(1/dist)
+                    arr2 = np.append(arr2, calcPonderation(weight, df_subT[lidar_parametres].ix[idx_wdw].values))
+                else:
+                    arr_nan = np.zeros((1 + len(lidar_parametres)*4))
+                    arr_nan[:] = np.nan
+                    arr2 = np.append(arr2, arr_nan)
+                app(arr2)
+    #### retourne pour chaque sous-categorie array([nb_pixel, vmoy, vmin, vmax, vstd])
+    return [np.vstack([v[i] for i in range(0,len(v), len(list_df))]), np.vstack([v[i] for i in range(1,len(v), len(list_df))])]
+
+
+
+def points2grid(coord_px, lidar_df, lidar_parametres, subtypes):
+    """
+    Convertit une liste de points en matrice
+    
+    PARAMETRES:
+    
+    **coord_px** (*liste,tuple*): coordonnees x,y du pixel \n
+    **longitude** (*list*): liste des longitudes a traiter \n
+    **latitude** (*list*): liste des latitudes a traiter \n
+    **valeurs** (*list*): liste des valeurs \n
+
+    Retourne en (x,y) la moyenne des valeurs 
+    """
+
+    x = coord_px[0]
+    y = coord_px[1]
+    latitude = lidar_df.Latitude.values
+    longitude = lidar_df.Longitude.values
+    idx = np.where((latitude >= y - 0.25) & (latitude < y) & (longitude >= x) & (longitude < x + 0.25))[0]  # recherche des indices des valeurs de lat/lon comprises dans le "pixel" de coord (x[j],y[i])
+    arr = np.asarray([])
+    if idx.size:
+        for subtype in subtypes:
+            arr = np.append(arr, lidar_df[lidar_df.FeatureSubtype == subtype][lidar_parametres].ix[idx].mean().values)
+    else:
+        arr = np.append(arr, np.asarray([np.nan]*len(lidar_parametres)*len(subtypes)))
+    return arr
 
 def rolling_window(matrice, longitudes, latitudes, coords, window, reso):
     reso_init = np.abs(np.round(np.mean(np.diff(latitudes)), 2))
@@ -112,6 +203,7 @@ def rolling_window(matrice, longitudes, latitudes, coords, window, reso):
     return np.asarray(list_stats)
 
 
+
 def extractData(ponderation_type, lidar_parametres, lidar_df, ext_files, date, window, cpu, x, y, reso):
     """
     Fonction intermediaire qui appelle la fonction de ponderation et la fonction d'extraction des donnees externes.
@@ -149,8 +241,10 @@ def extractData(ponderation_type, lidar_parametres, lidar_df, ext_files, date, w
     ##### boucle sur la liste des sous-types 
     list_values = {} # initialisation du dictionnaire
     subtypes = list(lidar_df.FeatureSubtype.unique())  # liste des sous-categories
-    list_df = [ lidar_df[lidar_df.FeatureSubtype == st].reset_index(drop=True) for st in subtypes]  # liste des df par sous-categorie
+    list_df = [lidar_df[lidar_df.FeatureSubtype == st].reset_index(drop=True) for st in subtypes]  # liste des df par sous-categorie
     t1 = time.time()
+    grid = np.vstack([points2grid(coords, lidar_df, lidar_parametres, subtypes) for coords in xy])
+    print time.time()-t1
     interp_values = Parallel(n_jobs=cpu)(delayed(ponderation)(ponderation_type, lidar_parametres, list_df, lcoords, window, reso) for lcoords in list_jobs)
     ##### 'reconstruction' et chargement des matrices dans le dictionnaire
     for s in range(len(subtypes)):

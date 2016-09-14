@@ -7,7 +7,7 @@ from glob import glob
 from joblib import Parallel, delayed
 
 
-def points2matrice(coord_px,longitude,latitude,valeurs):
+def points2grid(coord_px,longitude,latitude,valeurs):
     """
     Convertit une liste de points en matrice
     
@@ -48,7 +48,7 @@ if __name__ == "__main__":
         csv = pd.read_csv(f,header=0)
         lon = csv.Longitude.values
         lat = csv.Latitude.values
-        lvalues = Parallel(n_jobs=-1)(delayed(points2matrice)(coords,lon,lat,csv.Layer_Base_Altitude) for coords in xy)
+        lvalues = Parallel(n_jobs=-1)(delayed(points2grid)(coords,lon,lat,csv.Layer_Base_Altitude) for coords in xy)
         arr = np.asarray(lvalues).reshape(yo.shape[0],-1)
     
     import matplotlib.pyplot as plt
