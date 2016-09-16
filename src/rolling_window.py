@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
+import pandas as pd
 from netCDF4 import Dataset, date2index
 from joblib import Parallel, delayed
 import time
@@ -83,14 +84,11 @@ def ponderation2(ponderation_type, lidar_parametres, lidar_df, subtypes, coords,
     Fonction qui retourne pour les pixels de coordonnees(coords) la valeur ponderee
     """
     
-    longitude = lidar_df.Longitude.values
-    latitude = lidar_df.Latitude.values
-
+    longitude = lidar_df.Longitude
+    latitude = lidar_df.Latitude
     v = []
     app = v.append
-    arr = np.asarray([])
-    arr2 = np.asarray([])
-    for coord in coords[857:858]: #[850:860]:
+    for coord in coords[:]:
         x_px = coord[0]
         y_px = coord[1]
         # definition de la fenetre
@@ -99,34 +97,38 @@ def ponderation2(ponderation_type, lidar_parametres, lidar_df, subtypes, coords,
         y_min = y_px - reso*(window/2)
         y_max = y_px + reso*(window/2)
         ##### recherche des indices des valeurs lidar comprises dans le "pixel" de coord (x_px,y_px)
-        idx_px = np.where((latitude >= y_px - 0.25) & (latitude < y_px) & (longitude >= x_px) & (longitude < x_px + 0.25))[0]
+        idx_px = np.where((latitude.values >= y_px - 0.25) & (latitude.values < y_px) & (longitude.values >= x_px) & (longitude.values < x_px + 0.25))[0]
         ##### recherche des indices de valeurs lidar dans la fenetre
-        idx_wdw = list(np.where((latitude >= y_min) & (latitude < y_max) & (longitude >= x_min) & (longitude < x_max))[0])
+        idx_wdw = list(np.where((latitude.values >= y_min) & (latitude.values < y_max) & (longitude.values >= x_min) & (longitude.values < x_max))[0])
         if (idx_px.size) or (len(idx_wdw)):
             for subtype in subtypes:
-                df_subT = lidar_df[lidar_df.FeatureSubtype == subtype]
-                if idx_px.size:
-                    arr = np.append(arr, df_subT[lidar_parametres].ix[idx_px][subtype].mean().values)
-                else:
-                    arr = np.append(arr, np.asarray([np.nan]*len(lidar_parametres)))
-                app(arr)
+                arr = np.asarray([])
+                df_px = lidar_df[lidar_df.FeatureSubtype==subtype].ix[idx_px].dropna(subset=['Latitude'])
+                arr = np.append(arr, df_px[lidar_parametres].mean().values)
                 ##### calcul de la distance de chaque point lidar au pixel(x_px,y_px) pour chaque parametre lidar
-                if len(idx_wdw):
-                    subT_lon = df_subT.Longitude
-                    subT_lat = df_subT.Latitude
-                    dist = np.asarray([distance(subT_lon.ix[i], subT_lat.ix[i], x_px, y_px) for i in idx_wdw])
+                df_wdw = lidar_df[lidar_df.FeatureSubtype==subtype].ix[idx_wdw].dropna(subset=['Latitude'])
+                if df_wdw.size:
+                    dist = np.asarray([distance(df_wdw.Longitude.ix[i], df_wdw.Latitude.ix[i], x_px, y_px) for i in df_wdw.index])
                     if ponderation_type == 'carredistance':            
                         weight = (1/dist**2)/np.sum(1/dist**2)
                     else:
                         weight = (1/dist)/np.sum(1/dist)
-                    arr2 = np.append(arr2, calcPonderation(weight, df_subT[lidar_parametres].ix[idx_wdw].values))
+                    arr = np.append(arr, calcPonderation(weight, df_wdw[lidar_parametres].values))
                 else:
-                    arr_nan = np.zeros((1 + len(lidar_parametres)*4))
-                    arr_nan[:] = np.nan
-                    arr2 = np.append(arr2, arr_nan)
-                app(arr2)
+                    ar = np.zeros((1 + len(lidar_parametres)*4))
+                    ar[:] = np.nan
+                    arr = np.append(arr, ar)
+                app(arr)
+        else:
+            ar = np.zeros((1 + len(lidar_parametres)*5))
+            ar[:] = np.nan
+            for i in range(len(subtypes)):
+                app(ar)
     #### retourne pour chaque sous-categorie array([nb_pixel, vmoy, vmin, vmax, vstd])
-    return [np.vstack([v[i] for i in range(0,len(v), len(list_df))]), np.vstack([v[i] for i in range(1,len(v), len(list_df))])]
+    list_matrices = []
+    for s in range(len(subtypes)):
+        list_matrices.append(np.vstack([v[i] for i in range(s,len(v), len(subtypes))]))
+    return list_matrices
 
 
 
@@ -239,19 +241,17 @@ def extractData(ponderation_type, lidar_parametres, lidar_df, ext_files, date, w
     print 'lidar'
     
     ##### boucle sur la liste des sous-types 
-    list_values = {} # initialisation du dictionnaire
+    
     subtypes = list(lidar_df.FeatureSubtype.unique())  # liste des sous-categories
-    list_df = [lidar_df[lidar_df.FeatureSubtype == st].reset_index(drop=True) for st in subtypes]  # liste des df par sous-categorie
+    #list_df = [lidar_df[lidar_df.FeatureSubtype == st].reset_index(drop=True) for st in subtypes]  # liste des df par sous-categorie
     t1 = time.time()
-    grid = np.vstack([points2grid(coords, lidar_df, lidar_parametres, subtypes) for coords in xy])
-    print time.time()-t1
-    interp_values = Parallel(n_jobs=cpu)(delayed(ponderation)(ponderation_type, lidar_parametres, list_df, lcoords, window, reso) for lcoords in list_jobs)
+    #grid = np.vstack([points2grid(coords, lidar_df, lidar_parametres, subtypes) for coords in xy])
+    
+    interp_values = Parallel(n_jobs=cpu)(delayed(ponderation2)(ponderation_type, lidar_parametres, lidar_df, subtypes, lcoords, window, reso) for lcoords in list_jobs)
     ##### 'reconstruction' et chargement des matrices dans le dictionnaire
+    list_values = {} # initialisation du dictionnaire
     for s in range(len(subtypes)):
-        m = np.vstack((interp_values[i][s] for i in range(cpu)))
-        list_values[subtypes[s]+'_nb_lidar_points'] = m[:, 0]
-        for p in range(len(lidar_parametres)):
-            list_values[subtypes[s]+'_'+lidar_parametres[p]] = np.vstack((m[:, p + i] for i in range(1, m.shape[1] - 1, len(lidar_parametres)))).T
+        list_values[subtypes[s]] = np.vstack((interp_values[i][s] for i in range(cpu)))
     print('%s sec' % str(time.time() - t1))
     #####
 

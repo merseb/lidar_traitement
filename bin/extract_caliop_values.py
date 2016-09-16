@@ -14,8 +14,8 @@ from subprocess import Popen
 from joblib import cpu_count
 
 # import des fonctions complémentaires
-path = '/'.join(os.path.abspath(__file__).split('/')[:-2])
-#path = os.getcwd()
+#path = '/'.join(os.path.abspath(__file__).split('/')[:-2])
+path = os.getcwd()
 sys.path.append(path+"/src")
 from rolling_window import *
 from LidarUtil import *
@@ -95,7 +95,7 @@ layers_ref = ['Layer_Base_Altitude', 'Layer_Top_Altitude']
 
 
 # liste des variables/parametres extraits de chaque fichier lidar
-varlist = ["IGBP_Surface_Type", "Day_Night_Flag", "DEM_Surface_Elevation", "Column_Optical_Depth_Aerosols_532", "Feature_Optical_Depth_532","Feature_Optical_Depth_Uncertainty_532", "ExtinctionQC_532", "CAD_Score", "Feature_Classification_Flags", "Number_Layers_Found", "Layer_Top_Altitude", "Layer_Base_Altitude"]
+varlist = ["IGBP_Surface_Type", "Day_Night_Flag", "DEM_Surface_Elevation", "Column_Optical_Depth_Aerosols_532", "Feature_Optical_Depth_532","Feature_Optical_Depth_Uncertainty_532", "ExtinctionQC_532", "CAD_Score", "Feature_Classification_Flags", "Number_Layers_Found","Layer_Base_Extended", "Layer_Top_Altitude", "Layer_Base_Altitude"]
 
 # Variables/parametres sur lesquelles lissees
 param_lissage = ['Column_Optical_Depth_Aerosols_532', 'Base_corr', 'Top_corr', 'Layer_Base_Altitude', 'Layer_Top_Altitude', 'Feature_Optical_Depth_532', 'Feature_Optical_Depth_Uncertainty_532', 'ExtinctionQC_532']
@@ -135,15 +135,14 @@ files = {n:sorted(glob("*"+n.strftime('%Y-%m-%d')+"*.hdf")) for n in series[idt_
 t1 = time.time()
 # boucle pour chaque periode de n jours
 for k in sorted(dt_nday.keys())[idt+2:idt+3]:
-    t2 = time.time()
     print "\n\n\n###########  periode   du", k.date(), " au ", (k + timedelta(days=ptemps-1)).date()
     print "#########################################################"
     df_nday = pd.DataFrame()  # creation d une dataframe pour n jours
     #####  boucle pour chaque date de la periode de n jours
-    for day in dt_nday[k][:1]:
+    for day in dt_nday[k][:]:
         df_day = pd.DataFrame() # initialisation dataframe pour une orbite/jour
         ##### boucle pour chaque fichier de la date
-        for f in files[day][:]:
+        for f in files[day][:1]:
             hdf = SD(f, SDC.READ)
             df_file = pd.DataFrame()  # dataframe temporaire reinitialisee pour chaque fichier
             df_file["Latitude"] = hdf.select('Latitude')[:, 1]
@@ -226,8 +225,9 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
             #####
     
             ##### ajout de la dataframe par orbite(variables/parametres lidar filtrées) dans la dataframe de n jours
-            lp = list(set(df_day.columns) - set(['Feature_Classification_Flags', 'Layer_Top_Altitude', 'Layer_Base_Altitude']))
-            df_nday = df_nday.append(df_day[lp][(df_day.Latitude >= yo.min()) & (df_day.Latitude <= yo.max()) & (df_day.Longitude >= xo.min()) & (df_day.Longitude <= xo.max())],ignore_index=True) # extraction de la zone d'etude
+            #lp = list(set(df_day.columns) - set(['Feature_Classification_Flags'] + [c for c in df_day.columns if 'Layer_' in c]))
+            lp = list(set(df_day.columns) - set([c for c in df_day.columns if 'Layer_' in c])) + ['Layer_Base_Extended']
+            df_nday = df_nday.append(df_day[(df_day.Latitude >= yo.min()) & (df_day.Latitude <= yo.max()) & (df_day.Longitude >= xo.min()) & (df_day.Longitude <= xo.max()) & (df_day.IGBP_Surface_Type != "Water")],ignore_index=True) # extraction de la zone d'etude
         except AttributeError:
             pass
         ##############################################################################################################################################
@@ -245,7 +245,7 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
     ##### export format csv
     df_nday.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+str(ptemps)+'d_test.csv', index=False)  
     #####
-    print('%s sec' % str(time.time()-t2))
+    print('%s sec' % str(time.time()-t1))
     ##### interpolation
     cols_params = params_export + [c for c in df_nday if 'lissage' in c] # liste des parametres exportées avec ou sans suffixe lissage1,lissage2,...
     cols_out = [col for col in df_nday.columns if 'lissage'+str(lr-1) in col] #liste des parametres exportées avec le suffixe correspondant au dernier lissage
@@ -253,6 +253,7 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
     cols = list(set(df_nday.columns) - set(cols_del)) + ['Concentration_Aerosols']  # liste des colonnes à conserver
     df_nday_out = df_nday[df_nday.FeatureSubtype.isin(subtypes)][cols].reset_index(drop=True) # extraction de la subdataframe
     df_nday_out.rename(columns=dict(zip(cols_out, [c[:-9] for c in cols_out])), inplace=True) # renommage des colonnes en enlevant le suffixe lissage
+    df_nday_out.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+str(ptemps)+'d_test.csv', index=False)  
     output = extractData(methode_ponderation, params_export, df_nday_out, fichiers_ext[:], k, w_interp, cpu, xo, yo, reso_spatiale)
     #####
     
@@ -293,34 +294,37 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
     fillvalue = np.nan
 
     idate = 0  # date2index(k,tp)  # indice de la date de la donnee dans le netcdf
-    lidar_keys = sorted(list(set(output.keys()) - set(var_ext)))
-    for key in lidar_keys:
-        if 'nb_lidar_points' in key:
-            varnew = ncnew.createVariable(key, 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
-            varnew.standard_name = key
-            varnew[idate,...] = output[key].reshape(yo.shape[0], -1)
-        else:
-            calc = ['', '_min', '_max', '_std']
-            for j in range(4):
-                varnew = ncnew.createVariable(key+calc[j], 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
-                varnew.standard_name = key+calc[j]
-                varnew[idate, ...] = output[key][:, j].reshape(yo.shape[0], -1)
+    lidar_stat = ['', '_min', '_max', '_std']
+    lidar_keys = [p+'_point2grid' for p in params_export] + ['nb_lidar_points'] + [p + sts for sts in lidar_stat for p in params_export]
+    ext_stat = ['_pct_px', '_mean', '_min', '_max', '_std']
+    ext_keys = [v + sts for sts in ext_stat for v in var_ext]
+    try:
+        idx = ext_keys.index('mean_pDUST_mean')
+        ext_keys[idx] = 'pDUST_mean'
+    except ValueError:
+        pass
+        
+    for subtype in subtypes:
+        for i in range(len(lidar_keys)):
+            varnew = ncnew.createVariable(subtype + '_' + lidar_keys[i], 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
+            varnew.standard_name = subtype + '_' + lidar_keys[i]
+            varnew[idate, ...] = output[subtype][:, i].reshape(yo.shape[0], -1)
     for key in var_ext:
-        calc = ['_pct_px', '_mean', '_min', '_max', '_std']
+        ext_stat = ['_pct_px', '_mean', '_min', '_max', '_std']
         for j in range(5):
             if key == 'mean_pDUST':
-                varnew = ncnew.createVariable(key[5:]+calc[j], 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
-                varnew.standard_name = key[5:]+calc[j]
+                varnew = ncnew.createVariable(key[5:]+ext_stat[j], 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
+                varnew.standard_name = key[5:]+ext_stat[j]
             else:
-                varnew = ncnew.createVariable(key+calc[j], 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
-                varnew.standard_name = key+calc[j]
+                varnew = ncnew.createVariable(key+ext_stat[j], 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
+                varnew.standard_name = key+ext_stat[j]
             varnew[idate,...] = output[key][:,j].reshape(yo.shape[0],-1)
 
     ncnew.close()
 print('%s sec' % str(time.time() - t1))
 
-try:
-    year = sorted(dt_nday.keys())[idt + 1].year
-except IndexError:
-    year = sorted(dt_nday.keys())[idt].year
-popen = Popen([path+'/src/concat_lidar.sh', ddir_out, str(year), methode_ponderation, fenetre, str(ptemps)])
+#try:
+#    year = sorted(dt_nday.keys())[idt + 1].year
+#except IndexError:
+#    year = sorted(dt_nday.keys())[idt].year
+#popen = Popen([path+'/src/concat_lidar.sh', ddir_out, str(year), methode_ponderation, fenetre, str(ptemps)])
