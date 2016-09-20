@@ -2,6 +2,10 @@
 
 from pyhdf.SD import SD, SDC
 from netCDF4 import Dataset, date2num, date2index
+import rasterio
+from geopandas import GeoDataFrame
+from shapely.geometry import Point, shape
+import fiona
 import time
 import numpy as np
 import pandas as pd
@@ -14,8 +18,8 @@ from subprocess import Popen
 from joblib import cpu_count
 
 # import des fonctions complémentaires
-#path = '/'.join(os.path.abspath(__file__).split('/')[:-2])
-path = os.getcwd()
+path = '/'.join(os.path.abspath(__file__).split('/')[:-2])
+#path = os.getcwd()
 sys.path.append(path+"/src")
 from rolling_window import *
 from LidarUtil import *
@@ -95,13 +99,13 @@ layers_ref = ['Layer_Base_Altitude', 'Layer_Top_Altitude']
 
 
 # liste des variables/parametres extraits de chaque fichier lidar
-varlist = ["IGBP_Surface_Type", "Day_Night_Flag", "DEM_Surface_Elevation", "Column_Optical_Depth_Aerosols_532", "Feature_Optical_Depth_532","Feature_Optical_Depth_Uncertainty_532", "ExtinctionQC_532", "CAD_Score", "Feature_Classification_Flags", "Number_Layers_Found","Layer_Base_Extended", "Layer_Top_Altitude", "Layer_Base_Altitude"]
+varlist = ["IGBP_Surface_Type", "Day_Night_Flag", "DEM_Surface_Elevation", "Column_Optical_Depth_Aerosols_532", "Feature_Optical_Depth_532","Feature_Optical_Depth_Uncertainty_532", "ExtinctionQC_532", "CAD_Score", "Feature_Classification_Flags", "Number_Layers_Found","Layer_Base_Extended", "Relative_Humidity", "Layer_Top_Altitude", "Layer_Base_Altitude"]
 
 # Variables/parametres sur lesquelles lissees
-param_lissage = ['Column_Optical_Depth_Aerosols_532', 'Base_corr', 'Top_corr', 'Layer_Base_Altitude', 'Layer_Top_Altitude', 'Feature_Optical_Depth_532', 'Feature_Optical_Depth_Uncertainty_532', 'ExtinctionQC_532']
+param_lissage = ['Column_Optical_Depth_Aerosols_532', 'Base_corr', 'Top_corr', 'Layer_Base_Altitude', 'Layer_Top_Altitude', 'Feature_Optical_Depth_532', 'Feature_Optical_Depth_Uncertainty_532', 'ExtinctionQC_532', 'Relative_Humidity']
 
 # liste des variables/parametres interpolees pour chaque sous-type
-params_export = ["Column_Optical_Depth_Aerosols_532", "Feature_Optical_Depth_532", "Feature_Optical_Depth_Uncertainty_532", "Top_corr", "Base_corr", "Concentration_Aerosols"]
+params_export = ['Concentration_Aerosols', 'Feature_Optical_Depth_Uncertainty_532', 'Column_Optical_Depth_Aerosols_532', 'Base_corr', 'Top_corr', 'Feature_Optical_Depth_532', 'Relative_Humidity']
 
 
 
@@ -130,6 +134,10 @@ idt = bisect_left(sorted(dt_nday.keys()),debut) - 1 # a partir de la 1ere date d
 idt_series = series.index(sorted(dt_nday.keys())[idt]) # index de la date de la 1ere periode de njours dans la serie de dates depuis 1900-01-01
 files = {n:sorted(glob("*"+n.strftime('%Y-%m-%d')+"*.hdf")) for n in series[idt_series:]} # extraction des fichiers dans un dict, chaque entree corespond a une date 
 
+
+#tif = rasterio.open(path + '/src/+mask_Africa_025deg.tif')
+shp = fiona.open(path + '/src/mask/maskAfrica.shp')[0]
+
 ################################################################
 
 t1 = time.time()
@@ -142,7 +150,7 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
     for day in dt_nday[k][:]:
         df_day = pd.DataFrame() # initialisation dataframe pour une orbite/jour
         ##### boucle pour chaque fichier de la date
-        for f in files[day][:1]:
+        for f in files[day][:]:
             hdf = SD(f, SDC.READ)
             df_file = pd.DataFrame()  # dataframe temporaire reinitialisee pour chaque fichier
             df_file["Latitude"] = hdf.select('Latitude')[:, 1]
@@ -161,21 +169,24 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
             
             ##### boucle d'extraction des valeurs de chaque variable correspondant aux indices definis precedemment
             for var in list(set(varlist) - set([layers_ref[0]])):  # 1ere variable de layers_ref exclue
-                var_dict = hdf.select(var)
-                mat_in = var_dict[:]
-                attribs = var_dict.attributes()
-                if hdf.datasets()[var][1][1] == 1:
-                    df_file[var] = mat_in[:].flatten()
-                elif var == 'DEM_Surface_Elevation':
-                    df_file[var] = mat_in[:, 2]  # variable DEM: utilisation de la valeur moyenne
-                else:
-                    val = []
-                    for i in range(len(indices)):
-                        if indices[i] != -9999:
-                            val.append(mat_in[i, indices[i]])
-                        else:
-                            val.append(-9999)
-                    df_file[var] = val
+                try:
+                    var_dict = hdf.select(var)
+                    mat_in = var_dict[:]
+                    attribs = var_dict.attributes()
+                    if hdf.datasets()[var][1][1] == 1:
+                        df_file[var] = mat_in[:].flatten()
+                    elif var == 'DEM_Surface_Elevation':
+                        df_file[var] = mat_in[:, 2]  # variable DEM: utilisation de la valeur moyenne
+                    else:
+                        val = []
+                        for i in range(len(indices)):
+                            if indices[i] != -9999:
+                                val.append(mat_in[i, indices[i]])
+                            else:
+                                val.append(-9999)
+                        df_file[var] = val
+                except KeyError:
+                    df_file[var] = np.nan
                 var_dict.endaccess()
             hdf.end()
             df_file = df_file[df_file.Layer_Base_Altitude != -9999]  # suppression des points sans valeur
@@ -241,19 +252,22 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
     except AttributeError:
         pass
     #####
-    
+    ##### export csv mask Afrique
+#    geoms = [Point(xy) for xy in zip(df_nday.Longitude,df_nday.Latitude)]
+#    mask = df_nday.index[[geom.within(shape(shp['geometry'])) for geom in geoms]]
+#    df_africa = df_nday.ix[mask]
     ##### export format csv
-    df_nday.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+str(ptemps)+'d_test.csv', index=False)  
+    df_nday.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+str(ptemps)+'d_test1.csv', index=False)  
     #####
     print('%s sec' % str(time.time()-t1))
     ##### interpolation
-    cols_params = params_export + [c for c in df_nday if 'lissage' in c] # liste des parametres exportées avec ou sans suffixe lissage1,lissage2,...
-    cols_out = [col for col in df_nday.columns if 'lissage'+str(lr-1) in col] #liste des parametres exportées avec le suffixe correspondant au dernier lissage
-    cols_del = list(set(cols_params) - set(cols_out)) # liste des colonnes a effacer
-    cols = list(set(df_nday.columns) - set(cols_del)) + ['Concentration_Aerosols']  # liste des colonnes à conserver
-    df_nday_out = df_nday[df_nday.FeatureSubtype.isin(subtypes)][cols].reset_index(drop=True) # extraction de la subdataframe
-    df_nday_out.rename(columns=dict(zip(cols_out, [c[:-9] for c in cols_out])), inplace=True) # renommage des colonnes en enlevant le suffixe lissage
-    df_nday_out.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+str(ptemps)+'d_test.csv', index=False)  
+    cols = list(set(params_export) - set(['Concentration_Aerosols']))
+    cols_out = ['FeatureSubtype', 'Longitude', 'Latitude', 'Concentration_Aerosols'] + [col+'_lissage'+str(lr-1) for col in cols] #liste des parametres exportées avec le suffixe correspondant au dernier lissage
+    df_nday_out = df_nday[df_nday.FeatureSubtype.isin(subtypes)][cols_out].reset_index(drop=True) # extraction de la subdataframe
+    for c in df_nday_out.columns:
+        if 'lissage' in c:
+            df_nday_out.rename(columns={c: c[:-9]}, inplace=True)
+    df_nday_out.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+str(ptemps)+'d_test2.csv', index=False)
     output = extractData(methode_ponderation, params_export, df_nday_out, fichiers_ext[:], k, w_interp, cpu, xo, yo, reso_spatiale)
     #####
     
