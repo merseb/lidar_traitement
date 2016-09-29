@@ -135,14 +135,16 @@ idt_series = series.index(sorted(dt_nday.keys())[idt]) # index de la date de la 
 files = {n:sorted(glob("*"+n.strftime('%Y-%m-%d')+"*.hdf")) for n in series[idt_series:]} # extraction des fichiers dans un dict, chaque entree corespond a une date 
 
 
-#tif = rasterio.open(path + '/src/+mask_Africa_025deg.tif')
+gtif = rasterio.open(path + '/src/mask/maskAfrica_025deg.tif')
+rast = np.squeeze(gtif.read())
+rast[rast == gtif.nodata] = np.nan
 shp = fiona.open(path + '/src/mask/maskAfrica.shp')[0]
 
 ################################################################
 
 t1 = time.time()
 # boucle pour chaque periode de n jours
-for k in sorted(dt_nday.keys())[idt+2:idt+3]:
+for k in sorted(dt_nday.keys())[idt:]:
     print "\n\n\n###########  periode   du", k.date(), " au ", (k + timedelta(days=ptemps-1)).date()
     print "#########################################################"
     df_nday = pd.DataFrame()  # creation d une dataframe pour n jours
@@ -190,6 +192,10 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
                 var_dict.endaccess()
             hdf.end()
             df_file = df_file[df_file.Layer_Base_Altitude != -9999]  # suppression des points sans valeur
+            
+            ##### suppression des valeurs pour lesquelles la couche basse est détectée sous l'altitude du DEM
+            df_file['tmp'] = df_file.Layer_Base_Altitude - df_file.DEM_Surface_Elevation
+            df_file = df_file[df_file.tmp > 0]
 
             ##### Conversion int16 en sous-categories
             df_file['FeatureSubtype'] = df_file.Feature_Classification_Flags.apply(decodeFeatureMask)
@@ -237,7 +243,7 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
     
             ##### ajout de la dataframe par orbite(variables/parametres lidar filtrées) dans la dataframe de n jours
             #lp = list(set(df_day.columns) - set(['Feature_Classification_Flags'] + [c for c in df_day.columns if 'Layer_' in c]))
-            lp = list(set(df_day.columns) - set([c for c in df_day.columns if 'Layer_' in c])) + ['Layer_Base_Extended']
+            lp = list(set(df_day.columns) - set([c for c in df_day.columns if 'Layer_' in c])) + ['Layer_Base_Extended', 'Date']
             df_nday = df_nday.append(df_day[(df_day.Latitude >= yo.min()) & (df_day.Latitude <= yo.max()) & (df_day.Longitude >= xo.min()) & (df_day.Longitude <= xo.max()) & (df_day.IGBP_Surface_Type != "Water")],ignore_index=True) # extraction de la zone d'etude
         except AttributeError:
             pass
@@ -257,7 +263,7 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
 #    mask = df_nday.index[[geom.within(shape(shp['geometry'])) for geom in geoms]]
 #    df_africa = df_nday.ix[mask]
     ##### export format csv
-    df_nday.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+str(ptemps)+'d_test1.csv', index=False)  
+    df_nday.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+str(ptemps)+'d_test.csv', index=False)  
     #####
     print('%s sec' % str(time.time()-t1))
     ##### interpolation
@@ -267,7 +273,7 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
     for c in df_nday_out.columns:
         if 'lissage' in c:
             df_nday_out.rename(columns={c: c[:-9]}, inplace=True)
-    df_nday_out.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+str(ptemps)+'d_test2.csv', index=False)
+    #df_nday_out.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+str(ptemps)+'d.csv', index=False)
     output = extractData(methode_ponderation, params_export, df_nday_out, fichiers_ext[:], k, w_interp, cpu, xo, yo, reso_spatiale)
     #####
     
@@ -322,7 +328,7 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
         for i in range(len(lidar_keys)):
             varnew = ncnew.createVariable(subtype + '_' + lidar_keys[i], 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
             varnew.standard_name = subtype + '_' + lidar_keys[i]
-            varnew[idate, ...] = output[subtype][:, i].reshape(yo.shape[0], -1)
+            varnew[idate, ...] = output[subtype][:, i].reshape(yo.shape[0], -1) * rast
     for key in var_ext:
         ext_stat = ['_pct_px', '_mean', '_min', '_max', '_std']
         for j in range(5):
@@ -332,13 +338,13 @@ for k in sorted(dt_nday.keys())[idt+2:idt+3]:
             else:
                 varnew = ncnew.createVariable(key+ext_stat[j], 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
                 varnew.standard_name = key+ext_stat[j]
-            varnew[idate,...] = output[key][:,j].reshape(yo.shape[0],-1)
+            varnew[idate,...] = output[key][:,j].reshape(yo.shape[0],-1) * rast
 
     ncnew.close()
 print('%s sec' % str(time.time() - t1))
 
-#try:
-#    year = sorted(dt_nday.keys())[idt + 1].year
-#except IndexError:
-#    year = sorted(dt_nday.keys())[idt].year
-#popen = Popen([path+'/src/concat_lidar.sh', ddir_out, str(year), methode_ponderation, fenetre, str(ptemps)])
+try:
+    year = sorted(dt_nday.keys())[idt + 1].year
+except IndexError:
+    year = sorted(dt_nday.keys())[idt].year
+popen = Popen([path+'/src/concat_lidar.sh', ddir_out, str(year), methode_ponderation, fenetre, str(ptemps)])
