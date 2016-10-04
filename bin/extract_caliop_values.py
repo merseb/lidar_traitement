@@ -56,7 +56,8 @@ xo = np.arange(x_min, x_max, reso_spatiale)  #longitudes du .nc
 yo = np.arange(y_min, y_max, reso_spatiale)[::-1]  #latitudes du .nc
 
 
-w_lissage = 9 # impair fenetre pour fonction de lissage
+w_lissage = 31 # impair fenetre pour fonction de lissage
+liss = 'lissage' + str(w_lissage) + 'v'
 w_interp = 9 # 3 6 9 12 15 ... fenetre glissante pour l'interpolation
 fenetre = str(w_interp)+'px'
 
@@ -93,8 +94,9 @@ var_ext = [v[1] for v in fichiers_ext]
 
 # !!!!!! la 1ere variable de la liste layers_ref sert de couche de reference pour l'extraction de la premiere couche valide du profil lidar et egalement utilisee pour l'etape de lissage
 # Les variables ajoutées a la suite seront prises en compte lors de l'etape de lissage
-layers_ref = ['Layer_Base_Altitude', 'Layer_Top_Altitude']
-
+layerInit = 'Layer_Base_Altitude'
+layers_ref = ['Base_corr', 'Top_corr', 'Column_Optical_Depth_Aerosols_532']
+nbLissage = str(len(layers_ref))
 
 
 
@@ -102,7 +104,7 @@ layers_ref = ['Layer_Base_Altitude', 'Layer_Top_Altitude']
 varlist = ["IGBP_Surface_Type", "Day_Night_Flag", "DEM_Surface_Elevation", "Column_Optical_Depth_Aerosols_532", "Feature_Optical_Depth_532","Feature_Optical_Depth_Uncertainty_532", "ExtinctionQC_532", "CAD_Score", "Feature_Classification_Flags", "Number_Layers_Found","Layer_Base_Extended", "Relative_Humidity", "Layer_Top_Altitude", "Layer_Base_Altitude"]
 
 # Variables/parametres sur lesquelles lissees
-param_lissage = ['Column_Optical_Depth_Aerosols_532', 'Base_corr', 'Top_corr', 'Layer_Base_Altitude', 'Layer_Top_Altitude', 'Feature_Optical_Depth_532', 'Feature_Optical_Depth_Uncertainty_532', 'ExtinctionQC_532', 'Relative_Humidity']
+param_lissage = ['Column_Optical_Depth_Aerosols_532', 'Base_corr', 'Top_corr', 'Feature_Optical_Depth_532', 'Feature_Optical_Depth_Uncertainty_532', 'ExtinctionQC_532', 'Relative_Humidity']
 
 # liste des variables/parametres interpolees pour chaque sous-type
 params_export = ['Concentration_Aerosols', 'Feature_Optical_Depth_Uncertainty_532', 'Column_Optical_Depth_Aerosols_532', 'Base_corr', 'Top_corr', 'Feature_Optical_Depth_532', 'Relative_Humidity']
@@ -142,35 +144,36 @@ shp = fiona.open(path + '/src/mask/maskAfrica.shp')[0]
 
 ################################################################
 
-t1 = time.time()
+t = time.time()
 # boucle pour chaque periode de n jours
 for k in sorted(dt_nday.keys())[idt:]:
+    t1 = time.time()
     print "\n\n\n###########  periode   du", k.date(), " au ", (k + timedelta(days=ptemps-1)).date()
     print "#########################################################"
     df_nday = pd.DataFrame()  # creation d une dataframe pour n jours
     #####  boucle pour chaque date de la periode de n jours
     for day in dt_nday[k][:]:
-        df_day = pd.DataFrame() # initialisation dataframe pour une orbite/jour
+        #df_day = pd.DataFrame() # initialisation dataframe pour une orbite/jour
         ##### boucle pour chaque fichier de la date
-        for f in files[day][:]:
+        for idf, f in enumerate(files[day][:]):
             hdf = SD(f, SDC.READ)
             df_file = pd.DataFrame()  # dataframe temporaire reinitialisee pour chaque fichier
             df_file["Latitude"] = hdf.select('Latitude')[:, 1]
             df_file["Longitude"] = hdf.select('Longitude')[:, 1]
             df_file["Date"] = day
-            
+            df_file["idFile"] = idf
             ##### Extraction de l'indice de la 1ere couche valide en s appuyant sur la 1ere variable definie dans layers_ref
-            base = hdf.select(layers_ref[0])
+            base = hdf.select(layerInit)
             base_mat = base[:]
             list_mat_in = np.vsplit(base_mat, base_mat.shape[0])  # decoupage de la matrice 1D en une liste de n sous-matrices de dim (1,8)
             list_mat_out = map(indiceCouche, list_mat_in)  # appel fonction indiceCouche pour recuperer l'indice de la 1ere couche valide pour chaque coord lat/lon      
-            df_file[layers_ref[0]] = [m[0] for m in list_mat_out]
+            df_file[layerInit] = [m[0] for m in list_mat_out]
             indices = [m[1] for m in list_mat_out]  # liste des indices qui seront ensuite utilisés comme 'masque' pour les autres couches
             base.endaccess()
             #####
             
             ##### boucle d'extraction des valeurs de chaque variable correspondant aux indices definis precedemment
-            for var in list(set(varlist) - set([layers_ref[0]])):  # 1ere variable de layers_ref exclue
+            for var in list(set(varlist) - set([layerInit])):  # 1ere variable de layers_ref exclue
                 try:
                     var_dict = hdf.select(var)
                     mat_in = var_dict[:]
@@ -193,9 +196,19 @@ for k in sorted(dt_nday.keys())[idt:]:
             hdf.end()
             df_file = df_file[df_file.Layer_Base_Altitude != -9999]  # suppression des points sans valeur
             
-            ##### suppression des valeurs pour lesquelles la couche basse est détectée sous l'altitude du DEM
+            ##### suppression des valeurs pour lesquelles la couche basse est détectée sous l'altitude du DEM ou au-dessus la couche top
             df_file['tmp'] = df_file.Layer_Base_Altitude - df_file.DEM_Surface_Elevation
-            df_file = df_file[df_file.tmp > 0]
+            df_file['tmp1'] = df_file.Layer_Top_Altitude - df_file.Layer_Base_Altitude
+            df_file = df_file[(df_file.tmp > 0) & (df_file.tmp1 > 0)]
+            df_file.drop(['tmp','tmp1'], axis=1, inplace=True)
+
+
+            ##### calcul de Layer_Top_Altitude et Layer_Base_Altitude corrigées a partir du DEM
+            df_file['Top_corr'] = df_file.Layer_Top_Altitude - df_file.DEM_Surface_Elevation
+            df_file['Base_corr'] = df_file.Layer_Base_Altitude - df_file.DEM_Surface_Elevation
+            df_file.drop(['Layer_Base_Altitude', 'Layer_Top_Altitude'], axis=1, inplace=True)
+            #####
+
 
             ##### Conversion int16 en sous-categories
             df_file['FeatureSubtype'] = df_file.Feature_Classification_Flags.apply(decodeFeatureMask)
@@ -205,56 +218,32 @@ for k in sorted(dt_nday.keys())[idt:]:
             df_file.IGBP_Surface_Type = df_file.IGBP_Surface_Type.apply(decodeIGBP)
             #####
 
-            ##### calcul de Layer_Top_Altitude et Layer_Base_Altitude corrigées a partir du DEM
-            df_file['Top_corr'] = df_file.Layer_Top_Altitude - df_file.DEM_Surface_Elevation
-            df_file['Base_corr'] = df_file.Layer_Base_Altitude - df_file.DEM_Surface_Elevation
-            #####
 
-            ##### filtre qualite : CAD-Score < -20, ExtinctionQC_532 = 0 ou = 1, Feature_Optical_Depth_Uncertainty < 99, suppression des subtypefeature non aerosols
-            df_day = df_day.append(df_file[(df_file.CAD_Score < -20) & ((df_file.ExtinctionQC_532 == 0) | (df_file.ExtinctionQC_532 == 1)) & (df_file.Feature_Optical_Depth_Uncertainty_532 < 99) & (df_file.FeatureSubtype != 'no_aerosol') & (df_file.FeatureSubtype != 'Water')], ignore_index=True)
-            #####
-
-            ##########################################################################################################################################
-
-        ##### calcul_Nbpoints pour definir le nombre de points non nuls dans +-0.5 deg de latitude autour de chaque point ####
-        df_day['nb_values_window_1deg'] = np.nan
-        params = [p+'_lissage'+str(lr) for p in param_lissage for lr in range(1,len(layers_ref)+1)]
-        for c in params:
-            df_day[c] = np.nan
-        try:
-            for subtype in df_day.FeatureSubtype.unique().tolist()[:]:
-                matrice_latitude = df_day.Latitude[df_day.FeatureSubtype == subtype].values
-                df_day['nb_values_window_1deg'][df_day.FeatureSubtype == subtype ].values[:] = [calcul_Nbpoints(matrice_latitude, vx) for vx in list(matrice_latitude)]
-                ##### lissage (mediane) n fois en fct du nombre de variables choisies(layers_ref)
-                lr = 1
-                for lref in layers_ref[:]:                    
-                    if lr == 1:
-                        param_l1 = [cname for cname in df_day.columns if 'lissage'+str(lr) in cname]
-                        tmp = lissage(df_day[df_day.FeatureSubtype == subtype][param_lissage], w_lissage, lref)
-                        df_day.loc[df_day[df_day.FeatureSubtype == subtype].index, param_l1] = tmp.values
-                    else:
-                        lrf = lref + '_lissage' + str(lr - 1)
-                        param_l1 = [cname for cname in df_day.columns if 'lissage'+str(lr -1) in cname]
-                        param_l2 = [cname for cname in df_day.columns if 'lissage'+str(lr) in cname]
-                        tmp = lissage(df_day[df_day.FeatureSubtype == subtype][param_l1], w_lissage, lrf)
-                        df_day.loc[df_day[df_day.FeatureSubtype == subtype].index, param_l2] = tmp.values
-                    lr += 1
-            #####
-    
-            ##### ajout de la dataframe par orbite(variables/parametres lidar filtrées) dans la dataframe de n jours
-            #lp = list(set(df_day.columns) - set(['Feature_Classification_Flags'] + [c for c in df_day.columns if 'Layer_' in c]))
-            lp = list(set(df_day.columns) - set([c for c in df_day.columns if 'Layer_' in c])) + ['Layer_Base_Extended', 'Date']
-            df_nday = df_nday.append(df_day[(df_day.Latitude >= yo.min()) & (df_day.Latitude <= yo.max()) & (df_day.Longitude >= xo.min()) & (df_day.Longitude <= xo.max()) & (df_day.IGBP_Surface_Type != "Water")],ignore_index=True) # extraction de la zone d'etude
-        except AttributeError:
-            pass
-        ##############################################################################################################################################
-                                            ############# fin des pre-traitements ######################
-        ##############################################################################################################################################
-        ##############################################################################################################################################
-
+            params = [p+'_lissage' for p in param_lissage]
+            for c in params:
+                df_file[c] = np.nan
+            try:
+                for subtype in subtypes:
+                    ##### lissage (mediane) n fois en fct du nombre de variables choisies(layers_ref)
+                    for lref in layers_ref[:]:           
+                        if lref == 'Base_corr':
+                            tmp = lissage(df_file[df_file.FeatureSubtype == subtype][param_lissage], w_lissage, lref)
+                            df_file.loc[df_file[df_file.FeatureSubtype == subtype].index, params] = tmp.values
+                        else:
+                            lrf = lref + '_lissage'
+                            tmp = lissage(df_file[df_file.FeatureSubtype == subtype][params], w_lissage, lrf)
+                            df_file.loc[df_file[df_file.FeatureSubtype == subtype].index, params] = tmp.values
+                #####
+                #lp = list(set(df_file.columns) - set(['Layer_Base_Altitude', 'Layer_Top_Altitude']))
+                ##### filtre qualite : CAD-Score < -20, ExtinctionQC_532 = 0 ou = 1, Feature_Optical_Depth_Uncertainty < 99, suppression des subtypefeature non aerosols
+                df_nday = df_nday.append(df_file[(df_file.CAD_Score < -20) & ((df_file.ExtinctionQC_532 == 0) | (df_file.ExtinctionQC_532 == 1)) & (df_file.Feature_Optical_Depth_Uncertainty_532 < 99) & ((df_file.FeatureSubtype == 'dust') | (df_file.FeatureSubtype == 'polluted_dust'))], ignore_index=True)
+                #####
+            except AttributeError:
+                pass
+    df_nday['idPeriod'] = k
     ##### calcul concentration en aerosol
     try:
-        df_nday['Concentration_Aerosols'] = 1000 * (df_nday['Column_Optical_Depth_Aerosols_532_lissage'+str(lr-1)] / (df_nday['Top_corr_lissage'+str(lr-1)] - df_nday['Base_corr_lissage'+str(lr-1)])) * 1
+        df_nday['Concentration_Aerosols'] = 1000 * (df_nday['Column_Optical_Depth_Aerosols_532_lissage'] / (df_nday['Top_corr_lissage'] - df_nday['Base_corr_lissage'])) * 1
     except AttributeError:
         pass
     #####
@@ -263,17 +252,15 @@ for k in sorted(dt_nday.keys())[idt:]:
 #    mask = df_nday.index[[geom.within(shape(shp['geometry'])) for geom in geoms]]
 #    df_africa = df_nday.ix[mask]
     ##### export format csv
-    df_nday.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+str(ptemps)+'d_test.csv', index=False)  
+    df_nday.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+str(ptemps)+'d_' + liss + '.csv', index=False)  
     #####
     print('%s sec' % str(time.time()-t1))
     ##### interpolation
-    cols = list(set(params_export) - set(['Concentration_Aerosols']))
-    cols_out = ['FeatureSubtype', 'Longitude', 'Latitude', 'Concentration_Aerosols'] + [col+'_lissage'+str(lr-1) for col in cols] #liste des parametres exportées avec le suffixe correspondant au dernier lissage
-    df_nday_out = df_nday[df_nday.FeatureSubtype.isin(subtypes)][cols_out].reset_index(drop=True) # extraction de la subdataframe
+    cols = ['FeatureSubtype', 'Longitude', 'Latitude', 'Concentration_Aerosols'] + params #liste des parametres exportées avec le suffixe correspondant au dernier lissage
+    df_nday_out = df_nday[cols].reset_index(drop=True) # extraction de la subdataframe
     for c in df_nday_out.columns:
         if 'lissage' in c:
             df_nday_out.rename(columns={c: c[:-9]}, inplace=True)
-    #df_nday_out.to_csv(ddir_out+'/'+k.strftime("%Y_%m_%d")+'_'+str(ptemps)+'d.csv', index=False)
     output = extractData(methode_ponderation, params_export, df_nday_out, fichiers_ext[:], k, w_interp, cpu, xo, yo, reso_spatiale)
     #####
     
@@ -286,7 +273,7 @@ for k in sorted(dt_nday.keys())[idt:]:
     u_time = 'hours since 1900-01-01 00:00:00.0'
     dates = [date2num(k, u_time)]  # date2num(sorted(dt_nday.keys())[idt:],u_time)
     
-    ncnew = Dataset(ddir_out+'/'+str(k.date()).replace('-','_')+'_lidar_'+methode_ponderation+'_'+fenetre+'_'+str(ptemps)+'d.nc', 'w')
+    ncnew = Dataset(ddir_out+'/'+str(k.date()).replace('-','_')+'_lidar_'+methode_ponderation+'_'+fenetre+'_'+str(ptemps)+'d_' + liss + '.nc', 'w')
     # dimensions##################
     ncnew.createDimension('time', None)
     ncnew.createDimension('latitude', len(yo))
@@ -341,7 +328,8 @@ for k in sorted(dt_nday.keys())[idt:]:
             varnew[idate,...] = output[key][:,j].reshape(yo.shape[0],-1) * rast
 
     ncnew.close()
-print('%s sec' % str(time.time() - t1))
+    print('%s sec' % str(time.time() - t1))
+print('%s sec' % str(time.time() - t))
 
 try:
     year = sorted(dt_nday.keys())[idt + 1].year

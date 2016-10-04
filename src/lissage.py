@@ -28,7 +28,7 @@ def lissage(df_in, size, variable):
         mat = dataframe[v].values[:]
         mat_out = np.zeros(mat.shape[0])
         mat_out[:] = np.nan
-        for idx in modif_idx:
+        for idx in modif_idx:  #median RuntimeWarning
             if idx-((size-1)/2) < 0:
                 diff_valeurs = np.abs(idx - (size / 2) )
                 mat_tmp = np.append(mat[:idx+(size / 2)+1], mat[-diff_valeurs:])  # rajout de valeurs de fin de matrice en debut pour eviter valeurs nulles
