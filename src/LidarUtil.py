@@ -47,7 +47,7 @@ def indiceCouche(matrice):
     """
     ind = np.where(matrice.flatten()[:] != -9999)[0]
     if ind.size:
-        return matrice.flatten()[ind[0]],ind[0]
+        return matrice.flatten()[ind[-1]],ind[-1]
     else:
         return -9999,-9999
     
@@ -160,3 +160,22 @@ def lissage(df_in, size, variable):
             mat_out[nonmodif_idx] = mat[nonmodif_idx]
         dataframe[v] = mat_out[:]
     return dataframe
+
+
+import pysal as ps
+import pandas as pd
+'''
+Arguments
+---------
+dbfile  : DBF file - Input to be imported
+upper   : Condition - If true, make column heads upper case
+'''
+def dbf2DF(dbfile, upper=True): #Reads in DBF files and returns Pandas DF
+    db = ps.open(dbfile) #Pysal to open DBF
+    d = {col: db.by_col(col) for col in db.header} #Convert dbf to dictionary
+    #pandasDF = pd.DataFrame(db[:]) #Convert to Pandas DF
+    pandasDF = pd.DataFrame(d) #Convert to Pandas DF
+    if upper == True: #Make columns uppercase if wanted 
+        pandasDF.columns = map(str.upper, db.header) 
+    db.close() 
+    return pandasDF

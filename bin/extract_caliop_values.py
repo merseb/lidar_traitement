@@ -56,7 +56,7 @@ xo = np.arange(x_min, x_max, reso_spatiale)  #longitudes du .nc
 yo = np.arange(y_min, y_max, reso_spatiale)[::-1]  #latitudes du .nc
 
 
-w_lissage = 31 # impair fenetre pour fonction de lissage
+w_lissage = 25 # impair fenetre pour fonction de lissage
 liss = 'lissage' + str(w_lissage) + 'v'
 w_interp = 9 # 3 6 9 12 15 ... fenetre glissante pour l'interpolation
 fenetre = str(w_interp)+'px'
@@ -104,7 +104,7 @@ nbLissage = str(len(layers_ref))
 varlist = ["IGBP_Surface_Type", "Day_Night_Flag", "DEM_Surface_Elevation", "Column_Optical_Depth_Aerosols_532", "Feature_Optical_Depth_532","Feature_Optical_Depth_Uncertainty_532", "ExtinctionQC_532", "CAD_Score", "Feature_Classification_Flags", "Number_Layers_Found","Layer_Base_Extended", "Relative_Humidity", "Layer_Top_Altitude", "Layer_Base_Altitude"]
 
 # Variables/parametres sur lesquelles lissees
-param_lissage = ['Column_Optical_Depth_Aerosols_532', 'Base_corr', 'Top_corr', 'Feature_Optical_Depth_532', 'Feature_Optical_Depth_Uncertainty_532', 'ExtinctionQC_532', 'Relative_Humidity']
+param_lissage = ['Column_Optical_Depth_Aerosols_532', 'Base_corr', 'Top_corr']   ##, 'Feature_Optical_Depth_532', 'Feature_Optical_Depth_Uncertainty_532', 'ExtinctionQC_532', 'Relative_Humidity']
 
 # liste des variables/parametres interpolees pour chaque sous-type
 params_export = ['Concentration_Aerosols', 'Feature_Optical_Depth_Uncertainty_532', 'Column_Optical_Depth_Aerosols_532', 'Base_corr', 'Top_corr', 'Feature_Optical_Depth_532', 'Relative_Humidity']
@@ -118,7 +118,7 @@ cpu = 3  # joblib.cpu_count() - 1 # nombre de processeurs pour la parallelisatio
 
 #######################################################################
 ########## traitement dates ###########################################
-# creation de pas de temps de n jours(ptemps) en commencant le 1900-01-01
+# creation de pas de temps de n jours(ptemps) avec comme origine le 1900-01-01
 
 files_in = sorted(glob("*.hdf"))
 if not files_in:
@@ -218,26 +218,28 @@ for k in sorted(dt_nday.keys())[idt:]:
             df_file.IGBP_Surface_Type = df_file.IGBP_Surface_Type.apply(decodeIGBP)
             #####
 
+            ##### filtre qualite : CAD-Score < -20, ExtinctionQC_532 = 0 ou = 1, Feature_Optical_Depth_Uncertainty < 99, suppression des subtypefeature non aerosols
+            dfFiltre = df_file[(df_file.CAD_Score < -20) & ((df_file.ExtinctionQC_532 == 0) | (df_file.ExtinctionQC_532 == 1)) & (df_file.Feature_Optical_Depth_Uncertainty_532 < 99) & ((df_file.FeatureSubtype == 'dust') | (df_file.FeatureSubtype == 'polluted_dust'))]
+            #####
+
 
             params = [p+'_lissage' for p in param_lissage]
             for c in params:
-                df_file[c] = np.nan
+                dfFiltre[c] = np.nan
             try:
                 for subtype in subtypes:
                     ##### lissage (mediane) n fois en fct du nombre de variables choisies(layers_ref)
                     for lref in layers_ref[:]:           
                         if lref == 'Base_corr':
-                            tmp = lissage(df_file[df_file.FeatureSubtype == subtype][param_lissage], w_lissage, lref)
-                            df_file.loc[df_file[df_file.FeatureSubtype == subtype].index, params] = tmp.values
+                            tmp = lissage(dfFiltre[dfFiltre.FeatureSubtype == subtype][param_lissage], w_lissage, lref)
+                            dfFiltre.loc[df_file[dfFiltre.FeatureSubtype == subtype].index, params] = tmp.values
                         else:
                             lrf = lref + '_lissage'
-                            tmp = lissage(df_file[df_file.FeatureSubtype == subtype][params], w_lissage, lrf)
-                            df_file.loc[df_file[df_file.FeatureSubtype == subtype].index, params] = tmp.values
+                            tmp = lissage(dfFiltre[dfFiltre.FeatureSubtype == subtype][params], w_lissage, lrf)
+                            dfFiltre.loc[dfFiltre[dfFiltre.FeatureSubtype == subtype].index, params] = tmp.values
                 #####
                 #lp = list(set(df_file.columns) - set(['Layer_Base_Altitude', 'Layer_Top_Altitude']))
-                ##### filtre qualite : CAD-Score < -20, ExtinctionQC_532 = 0 ou = 1, Feature_Optical_Depth_Uncertainty < 99, suppression des subtypefeature non aerosols
-                df_nday = df_nday.append(df_file[(df_file.CAD_Score < -20) & ((df_file.ExtinctionQC_532 == 0) | (df_file.ExtinctionQC_532 == 1)) & (df_file.Feature_Optical_Depth_Uncertainty_532 < 99) & ((df_file.FeatureSubtype == 'dust') | (df_file.FeatureSubtype == 'polluted_dust'))], ignore_index=True)
-                #####
+                
             except AttributeError:
                 pass
     df_nday['idPeriod'] = k
@@ -335,4 +337,4 @@ try:
     year = sorted(dt_nday.keys())[idt + 1].year
 except IndexError:
     year = sorted(dt_nday.keys())[idt].year
-popen = Popen([path+'/src/concat_lidar.sh', ddir_out, str(year), methode_ponderation, fenetre, str(ptemps)])
+popen = Popen([path+'/src/concat_lidar.sh', ddir_out, str(year), methode_ponderation, fenetre, str(ptemps), str(w_lissage)])
