@@ -6,7 +6,7 @@ from scipy.ndimage import median_filter
 import matplotlib.pyplot as plt
 
 
-def lissage(df_in, size, variable):
+def lissage1(df_in, size, variable):
     """
     PARAMETRES:
 
@@ -42,6 +42,29 @@ def lissage(df_in, size, variable):
             mat_out[nonmodif_idx] = mat[nonmodif_idx]
         dataframe[v] = mat_out[:]
     return dataframe
+
+
+def argMedian(a):
+    m = np.median(a)
+    ind = np.argsort(a)[(len(a)/2)+1]
+    return m, ind
+
+
+def lissage(matrice, ww, lref):
+    arr = matrice.copy()
+    lo = range(arr.shape[1])
+    lo.remove(lref)
+    for i in range(ww/2,arr.shape[0]-(ww/2)):
+        med, ix = argMedian(arr[i-((ww-1)/2):i+((ww-1)/2)+1, lref]) # mediane et indice(dans la fenetre de 9 valeurs) de valeur utilisée pour remplacer la valeur cible [i] de la couche de ref
+        if arr[i, lref] != med:
+            print 'changes'
+            arr[i, lref] = med
+            # modif des valeurs des couches suivantes en utilisant les mêmes indices
+            arr[i,lo[0]] = arr[i-((ww-1)/2):i+((ww-1)/2)+1,lo[0]][ix] 
+            arr[i,lo[1]] = arr[i-((ww-1)/2):i+((ww-1)/2)+1,lo[1]][ix]
+            arr[i,lo[2]] = arr[i-((ww-1)/2):i+((ww-1)/2)+1,lo[2]][ix]
+    return arr
+
 
 ######################################################################################################
 ######################################################################################################

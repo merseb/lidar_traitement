@@ -17,51 +17,66 @@ from LidarUtil import *
 varlist = ["IGBP_Surface_Type", "Day_Night_Flag", "DEM_Surface_Elevation", "Column_Optical_Depth_Aerosols_532", "Feature_Optical_Depth_532","Feature_Optical_Depth_Uncertainty_532", "ExtinctionQC_532", "CAD_Score", "Feature_Classification_Flags", "Number_Layers_Found","Layer_Base_Extended", "Relative_Humidity", "Layer_Top_Altitude", "Layer_Base_Altitude"]
 
 # Variables/parametres sur lesquelles lissees
-param_lissage = ['Column_Optical_Depth_Aerosols_532', 'Base_corr', 'Top_corr']   ##, 'Feature_Optical_Depth_532', 'Feature_Optical_Depth_Uncertainty_532', 'ExtinctionQC_532', 'Relative_Humidity']
+param_lissage = ['Base_corr', 'Top_corr', 'Column_Optical_Depth_Aerosols_532',  'Concentration_Aerosols']   ##, 'Feature_Optical_Depth_532', 'Feature_Optical_Depth_Uncertainty_532', 'ExtinctionQC_532', 'Relative_Humidity']
 
 
 
-def lissage(df_in, size, variable):
-    """
-    PARAMETRES:
-
-    **df_in** (*pandas dataframe*): dataframe \n
-    **size** (*int impair*): dimension de la fenetre \n
-    **variableslist** (*list*): liste des variables a traiter \n
-    **variable** (*string*): variable de reference pour modifier les variables suivantes sur les memes indices
-
-    Renvoie une dataframe avec les memes dimensions
-
-    """
-    assert (size % 2 == 1), "La taille de la fenetre doit etre impaire"
-
-    dataframe = df_in.copy()
-    dataframe[variable] = median_filter(dataframe[variable].values, size=size)
-    nonmodif_idx = np.where(df_in[variable].values == dataframe[variable])[0]  # recherche des indices de valeurs non modifiees
-    modif_idx = np.where(df_in[variable].values != dataframe[variable])[0]  # recherche des indices de valeurs modifiees
-    for v in list(set(df_in.columns) - set([variable])):
-        mat = dataframe[v].values[:]
-        mat_out = np.zeros(mat.shape[0])
-        mat_out[:] = np.nan
-        for idx in modif_idx:
-            if idx-((size-1)/2) < 0:
-                diff_valeurs = np.abs(idx - (size / 2) )
-                mat_tmp = np.append(mat[:idx+(size / 2)+1], mat[-diff_valeurs:])  # rajout de valeurs de fin de matrice en debut pour eviter valeurs nulles
-                mat_out[idx] = np.median(mat_tmp)
-            elif idx + ((size - 1) / 2) + 1 > mat.shape[0]:
-                diff_valeurs = idx+(size/2)+1 - mat.shape[0]
-                mat_tmp = np.append(mat[idx - (size / 2):], mat[:diff_valeurs])  # rajout de valeurs de debut de matrice en fin pour eviter valeurs nulles
-                mat_out[idx] = np.median(mat_tmp)
-            else:
-                mat_out[idx] = np.median(mat[idx-(size/2):idx+(size/2)+1])
-            mat_out[nonmodif_idx] = mat[nonmodif_idx]
-        dataframe[v] = mat_out[:]
-    return dataframe
+def argMedian(a):
+    m = np.median(a)
+    ind = np.argsort(a)[(len(a)/2)+1]
+    return m, ind
 
 
-ddir = '/home/mers/code/python/lidar_traitement'
+def lissage(matrice, ww, lref):
+    arr = matrice.copy()
+    lo = range(arr.shape[1])
+    lo.remove(lref)
+    for i in range(ww/2,arr.shape[0]-(ww/2)):
+        med, ix = argMedian(arr[i-((ww-1)/2):i+((ww-1)/2)+1, lref]) # mediane et indice(dans la fenetre de 9 valeurs) de valeur utilisée pour remplacer la valeur cible [i] de la couche de ref
+        if arr[i, lref] != med:
+            arr[i, lref] = med
+            # modif des valeurs des couches suivantes en utilisant les mêmes indices
+            arr[i,lo[0]] = arr[i-((ww-1)/2):i+((ww-1)/2)+1,lo[0]][ix] 
+            arr[i,lo[1]] = arr[i-((ww-1)/2):i+((ww-1)/2)+1,lo[1]][ix]
+            arr[i,lo[2]] = arr[i-((ww-1)/2):i+((ww-1)/2)+1,lo[2]][ix]
+    return arr
+
+
+def medFilt(x, k):
+    k2 = k // 2
+    y = np.zeros ((len (x), k*2), dtype=x.dtype)
+    y[:,k2] = x
+    indices = range(x.shape[0])
+    y[:,k2+k] = indices
+    for i in range (k2):
+        j = k2 - i
+        y[j:,i] = x[:-j]
+        y[:j,i] = x[0]
+        y[:-j,-(i+1)-k] = x[j:]
+        y[-j:,-(i+1)-k] = x[-1]
+        y[j:,i+k] = indices[:-j]
+        y[:j,i+k] = indices[0]
+        y[:-j,-(i+1)] = indices[j:]
+        y[-j:,-(i+1)] = indices[-1]
+    args = np.argsort(y[:,:k], axis=1)[:,k2]
+    return np.median (y[:,:k], axis=1), y[:,k:][indices,args]
+
+
+def argMedianLat(a):
+    N = (a.shape[0]/2) + 1
+    if (a[0,0] < dust[i,0] -0.5) and (a[-1,0] > a[N,0] + 0.5):
+        return a[N,2]
+    else:
+        med[N] = np.median(dust[:, 2])
+    return [m, ind]
+
+
+ddir = '/home/mers/code/python/lidar_traitement/zone_etude'
+ddir_fig ='/home/mers/Bureau/teledm/fusion_donnees/resultats/figures'
 os.chdir(ddir)
-f = 'zone_etude/CAL_LID_L2_05kmALay-Prov-V3-30.2014-03-24T13-45-37ZD.hdf'
+f = 'CAL_LID_L2_05kmALay-Prov-V3-30.2014-03-24T13-45-37ZD.hdf'
+#f = 'CAL_LID_L2_05kmALay-Prov-V3-30.2014-02-08T00-57-04ZN.hdf'
+date = f[31:41]
 hdf = SD(f, SDC.READ)
 df_file = pd.DataFrame()
 df_file["Latitude"] = hdf.select('Latitude')[:, 1]
@@ -93,7 +108,6 @@ for var in list(set(varlist) - set(['Layer_Base_Altitude'])):  # 1ere variable d
             df_file[var] = mat_in[:, 2]  # variable DEM: utilisation de la valeur moyenne
         else:
             val = []
-            print var
             for i in range(len(indices)):
                 if indices[i] != -9999:
                     val.append(mat_in[i, indices[i]])
@@ -117,7 +131,6 @@ df_file['Top_corr'] = df_file.Layer_Top_Altitude - df_file.DEM_Surface_Elevation
 df_file['Base_corr'] = df_file.Layer_Base_Altitude - df_file.DEM_Surface_Elevation
 df_file.drop(['Layer_Base_Altitude', 'Layer_Top_Altitude'], axis=1, inplace=True)
 #####
-dfFiltre = df_file[(df_file.CAD_Score < -20) & ((df_file.ExtinctionQC_532 == 0) | (df_file.ExtinctionQC_532 == 1)) & (df_file.Feature_Optical_Depth_Uncertainty_532 < 99) & ((df_file.FeatureSubtype == 'dust') | (df_file.FeatureSubtype == 'polluted_dust'))]
 
 ##### Conversion int16 en sous-categories
 df_file['FeatureSubtype'] = df_file.Feature_Classification_Flags.apply(decodeFeatureMask)
@@ -128,76 +141,173 @@ df_file.IGBP_Surface_Type = df_file.IGBP_Surface_Type.apply(decodeIGBP)
 #####
 
 
-dfFiltre = df_file[(df_file.CAD_Score < -20) & ((df_file.ExtinctionQC_532 == 0) | (df_file.ExtinctionQC_532 == 1)) & (df_file.Feature_Optical_Depth_Uncertainty_532 < 99) & ((df_file.FeatureSubtype == 'dust') | (df_file.FeatureSubtype == 'polluted_dust'))]
+dfFiltre = pd.DataFrame(df_file[(df_file.CAD_Score < -20) & ((df_file.ExtinctionQC_532 == 0) | (df_file.ExtinctionQC_532 == 1)) & (df_file.Feature_Optical_Depth_Uncertainty_532 < 99) & ((df_file.FeatureSubtype == 'dust') | (df_file.FeatureSubtype == 'polluted_dust'))])
+dfFiltre['Concentration_Aerosols'] = 1000 * (dfFiltre['Column_Optical_Depth_Aerosols_532'] / (dfFiltre['Top_corr'] - dfFiltre['Base_corr']))
+################# fin traitement ###########################
+###########################################################################
 
 
+
+
+
+####################### histo filtre #######################
+varHisto = ['Latitude', 'Longitude', 'Base_corr', 'Top_corr', "Column_Optical_Depth_Aerosols_532",  ]
+subtypes = ['dust', 'polluted_dust']
+dust = df_file[varHisto][df_file.FeatureSubtype==subtypes[0]].values
+pdust = df_file[varHisto][df_file.FeatureSubtype==subtypes[1]].values
+dustF = df_file[varHisto][df_file.FeatureSubtype==subtypes[0]].values
+pdustF = df_file[varHisto][df_file.FeatureSubtype==subtypes[1]].values
+fig, ax = plt.subplots(1, len(varHisto), figsize=(23, 12))
+fig.text(0.1, 0.5, 'nb valeurs', ha='center', va='center', rotation='vertical')
+fig.suptitle(date + 'repartition des valeurs pour les variables ' + ', '.join(varHisto) + 'avant et apres filtre\n(CAD_Score < -20, ExtinctionQC_532 =0 ou 1, Feature_Optical_Depth_Uncertainty < 99)')
+for i in range(len(varHisto)):
+    ax[i].hist([dust[:,i],dustF[:,i]], color=['green','blue'], ls='dotted', label=['dust', 'dust filtre'], alpha=0.5)
+    ax[i].hist([pdust[:,i],pdustF[:,i]], color=['yellow','grey'], ls='dashed', label=['polluted dust', 'polluted dust filtre'], alpha=0.5)
+    ax[i].set_xlabel(varHisto[i])
+    ax[i].legend(framealpha=0.5)
+#plt.show()
+fig.savefig(ddir_fig + '/'+ date.replace('-', '') + '_histo_filtre.png', dpi=330)
+
+################################################### LISSAGE MEDIANE #####################################################
+
+
+
+
+############utilisation median argMedianLat ##############################
+#med2 = np.zeros(dust.shape[0])
+#med2[:] = np.nan
+#for i in range((ww-1)/2,dust.shape[0] - ((ww-1)/2)):
+#    if (dust[i-((ww-1)/2),0] < dust[i,0] -0.5) and (dust[i + ((ww-1)/2),0] > dust[i,0] + 0.5):
+#        med2[i] = dust[i,2]
+#    else:
+#        med2[i] = np.median(dust[i-((ww-1)/2):i+((ww-1)/2), 2])
+###########################################################################
+
+
+############utilisation median argMedian ##################################
+
+ww = 9 # 9 15 25 31
+# 'Base_corr' 'Top_corr' 'Column_Optical_Depth_Aerosols_532' 'Concentration_Aerosols'
+lref = 3
+lo = [0,1,2,3] 
+lo.remove(lref)
+dftest = dfFiltre[['Latitude','Longitude', 'Base_corr', 'Top_corr', 'Column_Optical_Depth_Aerosols_532', 'Concentration_Aerosols', 'FeatureSubtype']].copy()
 params = [p+'_lissage' for p in param_lissage]
 for c in params:
-    df[c] = np.nan
+    dftest[c] = np.nan
 
-w_lissage = 25
 for subtype in ['dust', 'polluted_dust']:
-    tmp = lissage(df[df.FeatureSubtype == subtype][param_lissage], w_lissage, 'Base_corr')
-    df.loc[df[df.FeatureSubtype == subtype].index, params] = tmp.values
+    arr = dftest[['Base_corr', 'Top_corr', 'Column_Optical_Depth_Aerosols_532', 'Concentration_Aerosols']][dftest.FeatureSubtype == subtype].values
+    for i in range(ww/2,arr.shape[0]-(ww/2)):
+        med, ix = argMedian(arr[i-((ww-1)/2):i+((ww-1)/2)+1, lref]) # mediane et indice(dans la fenetre de 9 valeurs) de valeur utilisée pour remplacer la valeur cible [i] de la couche de ref
+        if arr[i, lref] != med:
+            arr[i, lref] = med
+            # modif des valeurs des couches suivantes en utilisant les mêmes indices
+            arr[i,lo[0]] = arr[i-((ww-1)/2):i+((ww-1)/2)+1,lo[0]][ix] 
+            arr[i,lo[1]] = arr[i-((ww-1)/2):i+((ww-1)/2)+1,lo[1]][ix]
+            arr[i,lo[2]] = arr[i-((ww-1)/2):i+((ww-1)/2)+1,lo[2]][ix]
+    dftest.loc[dftest[dftest.FeatureSubtype == subtype].index, params] = arr[:]
+
+
+########################### Test calcul mediane ###################################################
+#t = dftest[['Concentration_Aerosols','Concentration_Aerosols_lissage']][(dftest.Latitude > 10.) & (dftest.Latitude<11.5)] # test indice 2236 et 2239
+#test1 = pd.rolling_median(dftest.Base_corr[dftest.FeatureSubtype=='dust'],window=9)
+#test2 = medfilt(dftest.Base_corr[dftest.FeatureSubtype=='dust'].values, 9)
+#test3 = lissage(dftest[['Base_corr', 'Top_corr', 'Column_Optical_Depth_Aerosols_532', 'Concentration_Aerosols']][dftest.FeatureSubtype=='dust'].values,9,0)
+#test4 = dftest.Base_corr[dftest.FeatureSubtype=='dust'].values.copy()
+#test5 = dftest.Base_corr[dftest.FeatureSubtype=='dust'].values.copy()
+#
+#for i in range(4,200):
+#    w1 = test4[i-4:i+5]
+#    w2 = test5[i-4:i+5]
+#    print 'window ',w
+#    print 'arsort ',np.sort(w1)
+#    print 'arg ',np.argsort(w1)[4],'  valeur ',w[np.argsort(w1)[4]],'  median ',np.median(w2),'\n'
+#    test4[i] = w1[np.sort(w1)[4]]
+#    test5[i] = np.median(w2)
+#plt.plot(dftest.Latitude[dftest.FeatureSubtype=='dust'],dftest.Base_corr[dftest.FeatureSubtype=='dust'].values, 'k', linestyle='-', marker='o', markersize=7, label='init')
+#plt.plot(dftest.Latitude[dftest.FeatureSubtype=='dust'],test1, 'r', linestyle='--', marker='o', label='pandas median')
+#plt.plot(dftest.Latitude[dftest.FeatureSubtype=='dust'],test2, 'g', linestyle='--', marker='<', markeredgecolor='none', label='scipy medfilt')
+#plt.plot(dftest.Latitude[dftest.FeatureSubtype=='dust'],test3[:,0], 'k', linestyle=':', marker='>', markeredgecolor='none', label='fct lissage')
+##plt.plot(dftest.Latitude[dftest.FeatureSubtype=='dust'],test4, 'r', linestyle='--', marker='o', label='loop lissage')
+#plt.plot(dftest.Latitude[dftest.FeatureSubtype=='dust'],test5, 'b', linestyle=':', marker='*', label='loop np median')
+#plt.legend(), plt.show()
 
 
 
-df = df_file[(df_file.Latitude > 8) & (df_file.Latitude < 22)]
 
-#fig = plt.figure()
-#ax1 = fig.add_subplot(111)
-#ax2 = ax1.twiny()
-#ax1.plot(df.Latitude,df.Base_corr, 'k o', label='base')
-#ax1.plot(df.Latitude,df.Top_corr, 'r o', label='top')
-##ax2.plot(df.Latitude,df.Column_Optical_Depth_Aerosols_532, 'g-', label='AOD')
-#h1, l1 = ax1.get_legend_handles_labels()
-#h2, l2 = ax2.get_legend_handles_labels()
-##ax1.legend(h1+h2, l1+l2, loc='upper right')
-#fig.title('Base et Top Layer 2014-03-24 ')
-#fig.show()
-m_dust = df.mask(df.FeatureSubtype == 'dust')
-m_pdust = df.mask(df.FeatureSubtype == 'polluted_dust')
-plt.plot(df.Latitude,m_pdust.Base_corr, 'k o', label='base dust')
-plt.plot(df.Latitude,m_dust.Base_corr, 'k *', label='base polluted dust')
-plt.plot(df.Latitude,m_pdust.Top_corr, 'r o', label='top dust')
-plt.plot(df.Latitude,m_dust.Top_corr, 'r *', label='top polluted dust')
-plt.legend(), plt.title('Base et Top Layer 2014-03-24 dust et polluted dust confondus')
-plt.gca().yaxis.grid(False)
-plt.xlabel('Latitudes')
-plt.ylabel('Altitude (km)')
+
+
+
+
+
+################################### Plots profils ######################################
+subtypes = ['dust', 'polluted_dust']
+if lref in [0,1]:
+        label = 'Altitude'
+elif lref == 2:
+    label = 'Epaisseur'
+else:
+    label = 'Concentration'
+fig, axs = plt.subplots(2,1, figsize=(23, 12))
+fig.suptitle(date + ' profil de la couche ' + param_lissage[lref] + ' pour les ' + ' puis les '.join(subtypes) + ' \navant et apres lissage (fenetre de 9 points)')
+for i in range(len(subtypes)):
+    axs[i].plot(dftest.Latitude[dftest.FeatureSubtype==subtypes[i]], dftest[param_lissage[lref]][dftest.FeatureSubtype==subtypes[i]], color='k', linestyle='-', marker='o', markeredgecolor='black', markerfacecolor='none', markersize=10, label=subtypes[i] + ' init')
+    axs[i].plot(dftest.Latitude[dftest.FeatureSubtype==subtypes[i]], dftest[param_lissage[lref] + '_lissage'][dftest.FeatureSubtype==subtypes[i]], color='r', linestyle=':', marker='o', markeredgecolor='black',  label=subtypes[i] + ' lissage(9v)')
+    #axs[i].plot(dftest.Latitude[dftest.FeatureSubtype==subtypes[i]], dftest.Base_corr[dftest.FeatureSubtype=='dust'].rolling(9).median().values, 'b', linestyle='-', marker='o', label='test')
+    axs[i].set_xlabel('Latitude(deg)')
+    axs[i].set_ylabel(label)
+    axs[i].legend()
 plt.show()
+fig.savefig(ddir_fig + '/'+ date.replace('-', '') + '_Profil_lissage_' + param_lissage[lref] + '.png', dpi=330)
 
 
+################################### ZOOM Profil ########################################
+
+dfsub = dftest[(dftest.Latitude > 8) & (dftest.Latitude < 22)]
+
+varProfil = ['Base_corr', 'Top_corr', 'Column_Optical_Depth_Aerosols_532', 'Concentration_Aerosols']
+fig, ax = plt.subplots(4,1, figsize=(23, 12))
+fig.suptitle(date + ' dust et polluted dust confondus:\nlissage (filtre median) ' + param_lissage[lref] + ' fenetre (' + str(ww) + ' valeurs)' )
+for i in range(4):
+    ax[i].plot(dfsub.Latitude,dfsub[varProfil[i]], linestyle='-', color='k')
+    ax[i].plot(dfsub.Latitude,dfsub[varProfil[i] + '_lissage'], linestyle='--', color='r')
+    ax[i].plot(dfsub.Latitude[dfsub.FeatureSubtype=='dust'],dfsub[varProfil[i]][dfsub.FeatureSubtype=='dust'], linestyle='', marker='o', color='k', markersize=7, markerfacecolor='none', label='dust ' + param_lissage[lref] + ' initial')
+    ax[i].plot(dfsub.Latitude[dfsub.FeatureSubtype=='dust'],dfsub[varProfil[i]+'_lissage'][dfsub.FeatureSubtype=='dust'], linestyle='', marker='o', markersize=5, color='r', label='dust ' + param_lissage[lref] + ' lissage')
+    ax[i].plot(dfsub.Latitude[dfsub.FeatureSubtype=='polluted_dust'],dfsub[varProfil[i]][dfsub.FeatureSubtype=='polluted_dust'], linestyle='', marker='x', markersize=7, color='g', markerfacecolor='none', markeredgecolor='k', label='polluted dust ' + param_lissage[lref] + ' initial')
+    ax[i].plot(dfsub.Latitude[dfsub.FeatureSubtype=='polluted_dust'],dfsub[varProfil[i]+'_lissage'][dfsub.FeatureSubtype=='polluted_dust'], linestyle='', marker='x', markersize=5, color='b', markeredgecolor='r', label='polluted dust ' + param_lissage[lref] + ' lissage')
+    if varProfil[i] in ['Base_corr', 'Top_corr']:
+        ax[i].set_ylabel('Altitude(m)')
+    elif varProfil[i] in ['Column_Optical_Depth_Aerosols_532']:
+        ax[i].set_ylabel('Epaisseur')
+    else:
+       ax[i].set_ylabel('Concentration') 
+    ax[i].legend(framealpha=0.5)
+fig.savefig(ddir_fig + '/'+ date.replace('-', '') + '_zoom_Profil_lissage_' + param_lissage[lref] + '.png', dpi=330)
 
 
-
-plt.plot(df.Latitude,df.Base_corr, linestyle='-', marker='o', color='b', label='base dust + polluted dust')
-plt.plot(df.Latitude,df.Base_corr_lissage, linestyle='--', marker='*', color='k', label='base dust + polluted dust lissage 25val')
-plt.plot(df.Latitude,df.Top_corr, linestyle='-', marker='o', color='r', label='top dust + polluted dust')
-plt.plot(df.Latitude,df.Top_corr_lissage, linestyle='--', marker='*', color='g', label='top dust + polluted dust lissage 25val')
-plt.title('Base et Top Layer 2014-03-24 dust et polluted dust confondus:\ncomparaison lissage 25 valeurs')
-plt.legend(), plt.show()
-
-plt.plot(df.Latitude,df.Column_Optical_Depth_Aerosols_532, linestyle='-', marker='o', color='b', label='AOD dust + polluted dust')
-plt.plot(df.Latitude,df.Column_Optical_Depth_Aerosols_532_lissage, linestyle='--', marker='*', color='k', label='AOD dust + polluted dust lissage 25val')
-plt.title('Column_Optical_Depth_Aerosols_532 2014-03-24 dust et polluted dust confondus:\ncomparaison lissage 25 valeurs')
-plt.legend(), plt.show()
-
-lats = []
-for i in range(df_file.Latitude.min().round(), df_file.Latitude.max().round(), 1):
-    lats.append(df_file[(df_file.Latitude >= i) & (df_file.Latitude < (i + 1))])
-
-try:
-    for subtype in subtypes:
-        ##### lissage (mediane) n fois en fct du nombre de variables choisies(layers_ref)
-        for lref in layers_ref[:]:           
-            if lref == 'Base_corr':
-                tmp = lissage(df_file[df_file.FeatureSubtype == subtype][param_lissage], w_lissage, lref)
-                df_file.loc[df_file[df_file.FeatureSubtype == subtype].index, params] = tmp.values
-            else:
-                lrf = lref + '_lissage'
-                tmp = lissage(df_file[df_file.FeatureSubtype == subtype][params], w_lissage, lrf)
-                df_file.loc[df_file[df_file.FeatureSubtype == subtype].index, params] = tmp.values
-except:
-    pass
-df1 = df_file
+########## histogrammes
+Stypes = [['dust','polluted_dust'],['dust'],['polluted_dust']]
+fig, axs = plt.subplots(3, 4, figsize=(23, 12))
+fig.suptitle(date + ' repartition des valeurs de ' + '/'.join(['+'.join(St) for St in Stypes]) + ' pour chaque variable avant et apres lissage(lissage ref ' + param_lissage[lref] + ')')
+for i in range(3):
+    axs[i,0].hist(dftest[param_lissage[0]][dftest.FeatureSubtype.isin(Stypes[i])].values, bins=range(10), color='black', label=param_lissage[0], alpha=0.5)
+    axs[i,0].hist(dftest[param_lissage[0]+'_lissage'][dftest.FeatureSubtype.isin(Stypes[i])].values, bins=range(10), color='blue', label=param_lissage[0] + ' lissage', alpha=0.5)
+    axs[i,0].set_xlabel('Altitude(km)')
+    axs[i,0].set_ylabel('Frequence ' + '+'.join(Stypes[i]))
+    axs[i,0].legend(framealpha=0.5)
+    #axs[i,1].set_title(date + ' repartition des valeurs de ' + '/'.join(['+'.join(St) for St in Stypes]) + ' pour chaque variable avant et apres lissage(lissage ref ' + param_lissage[lref] + ')')
+    axs[i,1].hist(dftest[param_lissage[1]][dftest.FeatureSubtype.isin(Stypes[i])].values, bins=np.arange(10), color='black', label=param_lissage[1], alpha=0.5)
+    axs[i,1].hist(dftest[param_lissage[1]+'_lissage'][dftest.FeatureSubtype.isin(Stypes[i])].values, bins=np.arange(10), color='blue', label=param_lissage[1] + ' lissage', alpha=0.5)
+    axs[i,1].set_xlabel('Altitude(km)')
+    axs[i,1].legend(framealpha=0.5)
+    axs[i,2].hist(dftest[param_lissage[2]][dftest.FeatureSubtype.isin(Stypes[i])].values, bins=np.arange(0,2,0.1), color='black', label='Col AOD', alpha=0.5)
+    axs[i,2].hist(dftest[param_lissage[2]+'_lissage'][dftest.FeatureSubtype.isin(Stypes[i])].values, bins=np.arange(0,2,0.1), color='blue', label='Col AOD lissage', alpha=0.5)
+    axs[i,2].set_xlabel('Epaisseur')
+    axs[i,2].legend()
+    axs[i,3].hist(dftest[param_lissage[3]][dftest.FeatureSubtype.isin(Stypes[i])].values, bins=range(0, 1400,100), color='black', label=param_lissage[3], alpha=0.5)
+    axs[i,3].hist(dftest[param_lissage[3]+'_lissage'][dftest.FeatureSubtype.isin(Stypes[i])].values, bins=np.arange(0,1400,100), color='blue', label=param_lissage[3] + ' lissage', alpha=0.5)
+    axs[i,3].set_xlabel('Concentration')
+    axs[i,3].legend(framealpha=0.5)
+plt.show()
+fig.savefig(ddir_fig + '/'+ date.replace('-', '') + '_Histo_lissage_' + param_lissage[lref] + '.png', dpi=330)

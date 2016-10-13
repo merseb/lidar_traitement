@@ -37,8 +37,14 @@ date = '2014-01-27'
 w_lissage = 29
 couche = 'Base_corr'
 couche2 = 'Top_corr'
-dbf = '/home/mers/Bureau/teledm/fusion_donnees/shape/dust_pdust_2014_01_27_lissage25v.dbf'
-df_shape = dbf2DF(dbf, upper=False)
+fdbf = '/home/mers/Bureau/teledm/fusion_donnees/shape/dust_pdust_2014_01_27_lissage25v.dbf'
+dbf = dbf2DF(fdbf, upper=False)
+dbf.Latitude[dbf.FeatureSub == 'dust'].plot.hist(bins=np.arange(-1,37,1), label='dust', alpha=0.5)
+dbf.Latitude[dbf.FeatureSub == 'polluted_dust'].plot.hist(bins=np.arange(-1,37,1), label='polluted dust', alpha=0.5)
+plt.title('2014-01-27 repartition des dust et polluted dust sur le continent africain (lat -1deg/lat 37deg)')
+plt.legend(), plt.show()
+
+
 files = sorted(glob('*.csv'))
 lcsv = []
 for f in files[2:3]:
@@ -146,19 +152,19 @@ for j in range(len(lissage)):
 csv = pd.read_csv(files[2], header=0)
 latCountDust = []
 for l in range(-2, 51):
-    latCountDust.append(csv.Latitude[(csv.Latitude.values > l) & (csv.Latitude.values < l+1) & (csv.FeatureSubtype == "dust")].count())
+    latCountDust.append(csv.Latitude[(csv.Latitude.values > l) & (csv.Latitude.values < l+1) & (csv.FeatureSub == "dust")].count())
 
 lonCountDust = []
 for l in range(-18, 57):
-    lonCountDust.append(csv.Longitude[(csv.Longitude.values > l) & (csv.Longitude.values < l+1) & (csv.FeatureSubtype == "dust")].count())
+    lonCountDust.append(csv.Longitude[(csv.Longitude.values > l) & (csv.Longitude.values < l+1) & (csv.FeatureSub == "dust")].count())
 
 latCountPDust = []
 for l in range(-2, 51):
-    latCountPDust.append(csv.Latitude[(csv.Latitude.values > l) & (csv.Latitude.values < l+1) & (csv.FeatureSubtype == "polluted_dust")].count())
+    latCountPDust.append(csv.Latitude[(csv.Latitude.values > l) & (csv.Latitude.values < l+1) & (csv.FeatureSub == "polluted_dust")].count())
 
 lonCountPDust = []
 for l in range(-18, 57):
-    lonCountPDust.append(csv.Longitude[(csv.Longitude.values > l) & (csv.Longitude.values < l+1) & (csv.FeatureSubtype == "polluted_dust")].count())
+    lonCountPDust.append(csv.Longitude[(csv.Longitude.values > l) & (csv.Longitude.values < l+1) & (csv.FeatureSub == "polluted_dust")].count())
 
 
 fig = plt.figure()
