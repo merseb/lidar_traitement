@@ -57,7 +57,7 @@ yo = np.arange(y_min, y_max, reso_spatiale)[::-1]  #latitudes du .nc
 
 
 w_lissage = 9 # impair fenetre pour fonction de lissage
-layer = 'Base_corr'
+layer = 'Concentration_Aerosols' ## 'Base_corr', 'Top_corr', 'Column_Optical_Depth_Aerosols_532', 'Concentration_Aerosols'
 liss = 'lissage' + layer + str(w_lissage) + 'v'
 w_interp = 9 # 3 6 9 12 15 ... fenetre glissante pour l'interpolation
 fenetre = str(w_interp)+'px'
@@ -146,7 +146,7 @@ shp = fiona.open(path + '/src/mask/maskAfrica.shp')[0]
 
 t = time.time()
 # boucle pour chaque periode de n jours
-for k in sorted(dt_nday.keys())[idt+2:idt+3]:
+for k in sorted(dt_nday.keys())[idt:]:
     t1 = time.time()
     print "\n\n\n###########  periode   du", k.date(), " au ", (k + timedelta(days=ptemps-1)).date()
     print "#########################################################"
