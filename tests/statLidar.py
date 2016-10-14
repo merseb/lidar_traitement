@@ -8,6 +8,7 @@ import os, sys
 from glob import glob
 import shapefile as shp
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.pyplot import rc
 reload(sys)  
 sys.setdefaultencoding('utf8')
@@ -32,7 +33,7 @@ def dbf2DF(dbfile, upper=True): #Reads in DBF files and returns Pandas DF
     return pandasDF
 
 
-
+ddir_fig ='/home/mers/Bureau/teledm/fusion_donnees/resultats/figures'
 ddir = os.path.expanduser('~') + '/code/python/lidar_traitement/out/tmp'
 os.chdir(ddir)
 
@@ -64,18 +65,6 @@ plt.show()
 
 
 
-files = sorted(glob('*.csv'))
-lcsv = []
-for f in files[2:3]:
-    df = pd.read_csv( f, header=0)
-    dust = df[df.FeatureSubtype == "dust"].reset_index()
-    pdust = df[df.FeatureSubtype == "polluted_dust"].reset_index()
-    lcsv.append([f[-12:-10], dust, pdust])
-
-dates = list(dust.Date.unique())
-
-
-
 ##############################################################################################################################################################
 ##############################################################################################################################################################
 
@@ -98,53 +87,69 @@ benin = shp.Reader(ddirShp + 'benin/BEN_adm0.shp')
 niger = shp.Reader(ddirShp + 'niger/NER_adm0.shp')
 bbox = [africa, bfa, mali, benin, niger]
 ncf = sorted(glob('lidar*nc'))
-base = []
-top = []
-aod = []
-masse = []
-dust = {}
-pdust = {}
-varLissage = ['Base_corr', 'Top_corr', 'Column_Optical_Depth_Aerosols_532', 'Concentration_Aerosols']
-i = 3
-for f in ncf:
-    nc = Dataset(f, 'r')
-    dates = nc.variables['time']
-    ind = date2index(datetime.strptime(date, "%Y-%m-%d"), dates, select='exact')
-    tpdust = []
-    tdust = []
-    for i in range(len(varLissage)):
-        tpdust.append(nc.variables['polluted_dust_' + varLissage[i]][ind,...])
-        tdust.append(nc.variables['dust_' + varLissage[i]][ind,...])
-        pdust[varLissage[i]] = tpdust
-        dust[varLissage[i]] =tdust
-        pdustGrid = nc.variables['polluted_dust_' + varLissage[i]][ind,...]
-        dustGrid = nc.variables['dust_' + varLissage[i]][ind,...]
-    nc.close()
 
-fig, ax = plt.subplots(2,2, figsize=(23,12))
-ax = ax.ravel()
-for i in range(4):
-    im = ax[i].imshow(dust[i], interpolation='none', vmin=0, vmax=1000)
-    #ax.title(varLissage[0])
-fig.subplots_adjust(right=0.8)
-cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
-fig.colorbar(im, cax=cbar_ax)
-plt.show()
+
+
+varLissage = ['Base_corr', 'Top_corr', 'Column_Optical_Depth_Aerosols_532', 'Concentration_Aerosols']
+
+varL = 'Concentration_Aerosols'
+dust, pdust = [], []
+f = [n for n in ncf if varL in n][0]
+nc = Dataset(f, 'r')
+dates = nc.variables['time']
+ind = date2index(datetime.strptime(date, "%Y-%m-%d"), dates, select='exact')
+pdustGrid = nc.variables['polluted_dust_Base_corr_point2grid'][ind,...]
+dustGrid = nc.variables['dust_Base_corr_point2grid'][ind,...]
+for v in varLissage:
+    dust.append(nc.variables['dust_' + v][ind,...])
+    pdust.append(nc.variables['polluted_dust_' + v][ind,...])
+nc.close()
+
+
+axs = ['ax'+str(i) for i in range(4)]
+ims = ['im'+str(i) for i in range(4)]
+caxs = ['cax'+str(i) for i in range(4)]
+minmax = [[0,4], [0,7], [0,1], [0,1000]]
+for p in [[dust, 'Dust'], [pdust,'PollutedDust']]:
+    fig = plt.figure(1, figsize=(23,12))
+    fig.suptitle(p[1] + '\n' + date + ' Interpolation apres lissage de la variable ' + varL)
+    for idx in range(len(axs)):
+        axs[idx] = fig.add_subplot(2, 2, (idx + 1))
+        divider = make_axes_locatable(axs[idx])
+        caxs[idx] = divider.append_axes("right", size = "5%", pad = 0.05)
+        ims[idx] = axs[idx].imshow(p[0][idx], vmin=minmax[idx][0], vmax=minmax[idx][1], interpolation='none')
+        axs[idx].set_title(varLissage[idx]+'\n(min '+ str(p[0][idx].min()) + ' max ' + str(p[0][idx].max()) + ')')
+        plt.colorbar(ims[idx], cax = caxs[idx])
+    plt.show()
+    fig.savefig(ddir_fig + '/'+ date.replace('-', '') + '_interpolations' + p[1] + '_lissage' + varL + '.png', dpi=330)
+    plt.clf()
+
 
 xo = np.arange(-25.,57.01,0.25) 
 yo = np.arange(-1.25,51.01,0.25)[::-1]
 xx,yy = np.meshgrid(xo,yo)
 xy = zip(xx.flatten(),yy.flatten())  
-plt.figure()
-for b in bbox:
-    for shape in b.shapeRecords():
-        x = [i[0] for i in shape.shape.points[:]]
-        y = [i[1] for i in shape.shape.points[:]]
-        plt.plot(x,y, 'r')
-plt.plot(lonPDust,latPDust,'k.')
-plt.imshow(Pdust, extent=[xo.min(),xo.max(),yo.min(),yo.max()], interpolation='none')
-plt.show(), plt.colorbar()
 
-
+for stype in ['dust', 'polluted_dust']:
+    lon = dbf.Longitude[(dbf.FeatureSub==stype) & (dbf.idPeriod==date)].values
+    lat = dbf.Latitude[(dbf.FeatureSub==stype) & (dbf.idPeriod==date)].values
+    nc = Dataset(f, 'r')
+    dates = nc.variables['time']
+    ind = date2index(datetime.strptime(date, "%Y-%m-%d"), dates, select='exact')
+    grid = nc.variables[stype + '_Base_corr_point2grid'][ind,...]
+    nc.close()
+    plt.clf()
+    fig = plt.figure(figsize=(23,12))
+    fig.suptitle(date + ' ' + stype)
+    for b in bbox:
+        for shape in b.shapeRecords():
+            x = [i[0] for i in shape.shape.points[:]]
+            y = [i[1] for i in shape.shape.points[:]]
+            plt.plot(x,y, 'r')
+    plt.plot(lon,lat,'k.')
+    plt.imshow(grid, extent=[xo.min(),xo.max(),yo.min(),yo.max()], interpolation='none')
+    plt.show(), plt.colorbar()
+    fig.savefig(ddir_fig + '/'+ date.replace('-', '') + '_reechantillonnage_' + stype + '.png', dpi=330)
+    
 
 
