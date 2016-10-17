@@ -50,6 +50,21 @@ def indiceCouche(matrice):
         return matrice.flatten()[ind[-1]],ind[-1]
     else:
         return -9999,-9999
+
+
+def indiceCouche1(matrice):
+    """
+    retourne la valeur et l'indice de la 1ere couche ou -9999, -9999 si aucune couche n'est valide
+
+    Parametres:
+    **matrice (*2d array*)
+    
+    """
+    ind = np.where(matrice.flatten()[:] != -9999)[0]
+    if ind.size:
+        return matrice.flatten()[ind[-1]],ind[-1]
+    else:
+        return -9999,0
     
     
 ####################################################################################
@@ -102,6 +117,55 @@ def decodeFeatureMask(int16):
             return "other"
     else:
         return "no_aerosol"
+
+
+
+def decodeFeatureMask1(int16):
+    """
+    Flag: conversion int16 --> int
+    La fonction retourne une matrice de 3 valeurs chacune correspondant aux flags (1,2,3)
+    
+    Subtype                  
+    0 = not determined      
+    1 = clean marine   
+    2 = pure dust
+    3 = polluted continental
+    4 = clean continental
+    5 = polluted dust
+    6 = smoke
+    7 = other----
+    """
+    
+    
+    binaire = format(int16,'016b')  # little endian 
+    FeatureType = np.int(binaire[-3:],2)
+    FeatureTypeQA = np.int(binaire[-5:-3],2)
+    #IceWaterPhase = np.int(binaire[-7:-5],2)
+    #IceWaterPhaseQA = np.int(binaire[-9:-7],2)
+    FeatureSubtype = np.int(binaire[-12:-9],2)
+    #CloudAerosolPSCTypeQA = np.int(binaire[-13],2)
+    #Horizonthalaveraging = np.int(binaire[:-13],2)
+    #list_feature = [FeatureType,FeatureTypeQA,IceWaterPhase,IceWaterPhaseQA,FeatureSubtype,CloudAerosolPSCTypeQA,Horizonthalaveraging]
+    #return [binaire,FeatureSubtype]
+    if FeatureType==3 and FeatureTypeQA>1:
+        if FeatureSubtype == 0:
+            return 0
+        elif FeatureSubtype == 1:
+            return 1  # "clean_marine"
+        elif FeatureSubtype == 2:
+            return 2  # "dust"
+        elif FeatureSubtype == 3:
+            return 3  # "polluted_continental"
+        elif FeatureSubtype == 4:
+            return 4  # "clean_continental"
+        elif FeatureSubtype == 5:
+            return 5  # "pollute_dust"
+        elif FeatureSubtype == 6:
+            return 6  # "smoke"
+        elif FeatureSubtype == 7:
+            return 0
+    else:
+        return 0
 
 ####################################################################################
 ####################################################################################   
