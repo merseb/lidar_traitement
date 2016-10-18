@@ -223,7 +223,7 @@ for subtype in subtypes:
 ##################################################################################################    
 ##################################################################################################
 ##################################################################################################
-########################### Test calcul mediane ##################################################
+########################### Tests calcul mediane #################################################
 varLissage = ['Base_corr', 'Top_corr', 'Column_Optical_Depth_Aerosols_532', 'Concentration_Aerosols']
 ############# TEST 1 lissage sans prendre en compte les valeurs précédentes modifiées
 dftest = dfFiltre[['Latitude','Longitude', 'Base_corr', 'Top_corr', 'Column_Optical_Depth_Aerosols_532', 'Concentration_Aerosols', 'FeatureSubtype']].copy()
