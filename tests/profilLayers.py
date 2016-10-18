@@ -4,6 +4,7 @@ import numpy as np
 import os, sys
 from pyhdf.SD import SD, SDC
 import matplotlib
+matplotlib.use('Qt4Agg')
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 from mpl_toolkits.mplot3d import Axes3D
@@ -13,8 +14,8 @@ path = os.path.expanduser('~')+"/code/python/lidar_traitement"
 sys.path.append(path+"/src")
 from rolling_window import *
 from LidarUtil import *
-os.chdir(path+'/2014/zone_etude')
-matplotlib.use('Agg')
+#os.chdir(path+'/2014/zone_etude')
+
 # liste des variables/parametres extraits de chaque fichier lidar
 varlist = ["IGBP_Surface_Type",
            "Day_Night_Flag",
@@ -41,17 +42,27 @@ def readVariable(hdf, variable):
     layerMin = float(layerInit.attributes()['valid_range'].split('...')[0])
     layerMax = float(layerInit.attributes()['valid_range'].split('...')[1])
     matrice = layerInit[:]
-    print layerMin
     layerInit.endaccess()
     matrice[matrice < layerMin] = np.nan
     matrice[matrice > layerMax] = np.nan
     return matrice
 
-f = sys.argv[1]
-#f = 'CAL_LID_L2_05kmALay-Prov-V3-30.2014-03-24T13-45-37ZD.hdf'
+
+
+#f = sys.argv[1]
+f = path + '/2014/zone_etude/CAL_LID_L2_05kmALay-Prov-V3-30.2014-03-24T13-45-37ZD.hdf'
 #f = 'CAL_LID_L2_05kmALay-Prov-V3-30.2014-02-08T00-57-04ZN.hdf'
+
+if not f:
+    print "nom de fichier manquant"
+    sys.exit()
+
 date = f[31:41]
-hdf = SD(f, SDC.READ)
+try:
+    hdf = SD(f, SDC.READ)
+except Exception as ex:
+    print ex
+    sys.exit()
 lat = hdf.select('Latitude')[:, 1]
 lon = hdf.select('Longitude')[:, 1]
 baseInit = readVariable(hdf, 'Layer_Base_Altitude')
@@ -80,18 +91,19 @@ top = topInit - np.tile(DEM, baseInit.shape[1]).reshape((baseInit.shape[1],-1)).
 
 
 ### Dust
+# extraction data initiales
 maskDust = feature == types['dust']
 baseDust = np.ma.array(data=base, mask=~maskDust, fill_value=np.nan)
 topDust = np.ma.array(data=top, mask=~maskDust, fill_value=np.nan)
-
+# extraction datas layer extended
 maskExtDust = featureExt == types['dust']
 baseExtDust = np.ma.array(data=base, mask=~maskExtDust, fill_value=np.nan)
 topExtDust = np.ma.array(data=top, mask=~maskExtDust, fill_value=np.nan)
-
+# masques combines
 maskD = ~maskDust & ~maskExtDust
 baseDust1 = np.ma.array(data=base, mask=maskD, fill_value=np.nan)
 topDust1 = np.ma.array(data=top, mask=maskD, fill_value=np.nan)
-
+# extraction de la premiere couche
 listMat = np.vsplit(np.ma.filled(baseDust1, -9999), baseDust1.shape[0])  # decoupage de la matrice 1D en une liste de n sous-matrices de dim (1,8)
 output = map(indiceCouche1, listMat)
 indices = [m[1] for m in output]
@@ -102,18 +114,19 @@ topDust0 = np.array([topDust1[i, indices[i]] for i in range(topDust1.shape[0])])
 
 
 ### Polluted Dust
+# extraction data initiales
 maskPdust = feature == types['polluted_dust']
 basePdust = np.ma.array(data=base, mask=~maskPdust, fill_value=np.nan)
 topPdust = np.ma.array(data=top, mask=~maskPdust, fill_value=np.nan)
-
+# extraction datas layer extended
 maskExtPdust = featureExt == types['polluted_dust']
 baseExtPdust = np.ma.array(data=base, mask=~maskExtPdust, fill_value=np.nan)
 topExtPdust = np.ma.array(data=top, mask=~maskExtPdust, fill_value=np.nan)
-
+# masques combines
 maskDp = ~maskPdust & ~maskExtPdust
 basePdust1 = np.ma.array(data=base, mask=maskDp, fill_value=np.nan)
 topPdust1 = np.ma.array(data=top, mask=maskDp, fill_value=np.nan)
-
+# extraction de la premiere couche
 listMat1 = np.vsplit(np.ma.filled(basePdust1, -9999), basePdust.shape[0])  # decoupage de la matrice 1D en une liste de n sous-matrices de dim (1,8)
 output1 = map(indiceCouche1, listMat1)
 indices1 = [m[1] for m in output]
@@ -124,28 +137,29 @@ topPdust0 = np.array([topPdust1[i, indices1[i]] for i in range(topPdust1.shape[0
 
 #######################################################################################
 fig = plt.figure(1, figsize=(15,10))
-fig.suptitle(f + '\n')
+fig.suptitle(f.split('/')[-1] + '\nProfil des Dust et Polluted Dust')
 gs = gridspec.GridSpec(7,1, hspace=0.1)
 ax1 = plt.subplot(gs[:3, :])
 ax2 = plt.subplot(gs[4:, :], sharex=ax1)
 ax3 = plt.subplot(gs[3], sharex=ax1)
 for i in range(8):
     ax1.fill_between(lat, baseDust[:,i], topDust[:,i], color="green", alpha=0.5)
-    ax1.fill_between(lat, baseExtDust[:,i], topExtDust[:,i], color="blue", alpha=0.5)
+    ax1.fill_between(lat, baseExtDust[:,i], topExtDust[:,i], color="none",hatch="X",edgecolor="blue", alpha=0.5) 
     ax1.xaxis.grid(True)
     ax1.tick_params(axis='x', which='both', top='on', bottom='off', labeltop='on', labelbottom='off')
     ax1.set_ylabel('Altitude(km)')
-    ax1.text(0.5, 0.95, 'Dust', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='green', bbox=dict(facecolor='none', edgecolor='green', pad=10.0))
-    ax1.text(0.5, 0.85, 'Dust Layer Base Extended', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='blue', bbox=dict(facecolor='none', edgecolor='blue', pad=10.0))
+    ax1.text(0.7, 0.92, 'Dust', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='green', bbox=dict(facecolor='none', edgecolor='green', pad=10.0))
+    ax1.text(0.7, 0.77, 'Dust Layer Base Extended', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='blue', bbox=dict(facecolor='none', hatch="X", edgecolor='blue', pad=10.0))
     ax2.set_xlabel('Latitude')
-    ax2.text(0.5, -0.45, 'Polluted Dust', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='green', bbox=dict(facecolor='none', edgecolor='green', pad=10.0))
-    ax2.text(0.5, -0.55, 'Polluted Dust Layer Base Extended', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='blue', bbox=dict(facecolor='none', edgecolor='blue', pad=10.0))
+    ax2.text(0.7, -0.45, 'Polluted Dust', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='green', bbox=dict(facecolor='none', edgecolor='green', pad=10.0))
+    ax2.text(0.7, -0.60, 'Polluted Dust Layer Base Extended', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='blue', bbox=dict(facecolor='none', hatch="X", edgecolor='blue', pad=10.0))
     ax2.fill_between(lat, basePdust[:,i], topPdust[:,i], color="green", alpha=0.5)
-    ax2.fill_between(lat, baseExtPdust[:,i], topExtPdust[:,i], color="blue", alpha=0.5)
+    ax2.fill_between(lat, baseExtPdust[:,i], topExtPdust[:,i], color="none", hatch="X", edgecolor='blue', alpha=0.5)
     ax2.xaxis.grid(True)
     ax3.tick_params(axis='x', which='both', top='off', bottom='off', labelbottom='off')
     ax2.set_ylabel('Altitude(km)')
     ax3.plot(lat, np.ma.array(nbLayers, mask=nbLayers==0), color='black', marker='.', ls='none', markeredgecolor='none', markerfacecolor='black')
+    ax3.text(0.7, -0.1, 'Nombre de couches detectees', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='none', edgecolor='black', pad=10.0))
     ax3.xaxis.grid(True)
     ax3.set_ylabel('nb Layers')
     ax3.set_yticklabels([1,'',2,'',3,'',4])
