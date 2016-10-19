@@ -28,8 +28,9 @@ from LidarUtil import *
 #########################################################################################################################
 #########################################################################################################################
 #########################################################################################################################
-ddir_in = path+"/zone_etude"
-ddir_out = path+"/out"
+annee = 2014
+ddir_in = path+ '/' + str(annee) + "/zone_etude"
+ddir_out = path+'/' + str(annee) + "/out"
 if os.path.isdir(ddir_in):
 	os.chdir(ddir_in)
 else:
@@ -57,7 +58,7 @@ yo = np.arange(y_min, y_max, reso_spatiale)[::-1]  #latitudes du .nc
 
 
 w_lissage = 9 # impair fenetre pour fonction de lissage
-layer = 'Concentration_Aerosols' ## 'Base_corr', 'Top_corr', 'Column_Optical_Depth_Aerosols_532', 'Concentration_Aerosols'
+layer = 'Base_corr' ## 'Base_corr', 'Top_corr', 'Column_Optical_Depth_Aerosols_532', 'Concentration_Aerosols'
 liss = 'lissage' + layer + str(w_lissage) + 'v'
 w_interp = 9 # 3 6 9 12 15 ... fenetre glissante pour l'interpolation
 fenetre = str(w_interp)+'px'
@@ -252,7 +253,7 @@ for k in sorted(dt_nday.keys())[idt:]:
     #####
     print('%s sec' % str(time.time()-t1))
     ##### interpolation
-    cols = ['FeatureSubtype', 'Longitude', 'Latitude'] + params + ['Feature_Optical_Depth_Uncertainty_532', 'Feature_Optical_Depth_532', 'Relative_Humidity'] #liste des parametres exportées avec le suffixe correspondant au dernier lissage
+    cols = ['FeatureSubtype', 'Longitude', 'Latitude'] +  params + ['Feature_Optical_Depth_Uncertainty_532', 'Feature_Optical_Depth_532', 'Relative_Humidity'] #liste des parametres exportées avec le suffixe correspondant au dernier lissage
     df_nday_out = df_nday[cols].reset_index(drop=True) # extraction de la subdataframe
     for c in df_nday_out.columns:
         if 'lissage' in c:
@@ -309,6 +310,7 @@ for k in sorted(dt_nday.keys())[idt:]:
         
     for subtype in subtypes:
         for i in range(len(lidar_keys)):
+            lidar_keys[i]
             varnew = ncnew.createVariable(subtype + '_' + lidar_keys[i], 'f4', ('time', 'latitude', 'longitude'), fill_value=fillvalue)
             varnew.standard_name = subtype + '_' + lidar_keys[i]
             varnew[idate, ...] = output[subtype][:, i].reshape(yo.shape[0], -1) * rast

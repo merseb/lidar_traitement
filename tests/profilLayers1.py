@@ -13,7 +13,7 @@ from mpl_toolkits.mplot3d import Axes3D
 ddir_fig =os.path.expanduser('~') +'/Bureau/teledm/fusion_donnees/resultats/figures'
 path = os.path.expanduser('~')+"/code/python/lidar_traitement"
 sys.path.append(path+"/src")
-from rolling_window import *
+#from rolling_window import *
 from LidarUtil import *
 #os.chdir(path+'/2014/zone_etude')
 
@@ -115,24 +115,33 @@ hdf.end()
 base = baseInit - np.tile(DEM, baseInit.shape[1]).reshape((baseInit.shape[1],-1)).T
 top = topInit - np.tile(DEM, baseInit.shape[1]).reshape((baseInit.shape[1],-1)).T
 
+# filtre altitudes negatives
+indAlt = np.where(base<0)
+base[indAlt] = np.nan
+top[indAlt] = np.nan
+aod[indAlt] = np.nan
+caod[indAlt[0]] = np.nan
+
 # filtre CAD
 indCAD = np.where((cad >-20) & (cad < cadMin))
 base[indCAD] = np.nan
 top[indCAD] = np.nan
 aod[indCAD] = np.nan
+caod[indCAD[0]] = np.nan
 
 # filtre ExtinctionQC_532
 indQC = np.where(qc>2)
 base[indQC] = np.nan
 top[indQC] = np.nan
 aod[indQC] = np.nan
+#caod[indQC[0]] = np.nan
 
 # AOD Uncertainty
 indAOD_U = np.where(aodUnc > 99)
 base[indAOD_U] = np.nan
 top[indAOD_U] = np.nan
 aod[indAOD_U] = np.nan
-
+#caod[indAOD_U[0]] = np.nan
 
 
 ### Dust
@@ -146,39 +155,50 @@ maskExtDust = featureExt == types['dust']
 baseExtDust = np.ma.array(data=base, mask=~maskExtDust, fill_value=np.nan)
 topExtDust = np.ma.array(data=top, mask=~maskExtDust, fill_value=np.nan)
 ## masques combines
-#maskD = ~maskDust & ~maskExtDust
-#baseDust1 = np.ma.array(data=base, mask=maskD, fill_value=np.nan)
-#topDust1 = np.ma.array(data=top, mask=maskD, fill_value=np.nan)
-#aodDust1 = np.ma.array(data=aod, mask=maskD, fill_value=np.nan)
-
-# extraction de la premiere couche
+maskDE = np.where(maskDust | maskExtDust)[0]
+baseDE = np.ma.array(data=base, mask=~maskDE, fill_value=np.nan)
+## extraction de la premiere couche
+#indDust = np.where(maskDust | maskExtDust)[0]
+#listMat = np.vsplit(base[indDust,:], base[indDust,:].shape[0])  # decoupage de la matrice 1D en une liste de n sous-matrices de dim (1,8)
+#output = map(indiceCouche1, listMat)
+#indices = [m[1] for m in output]
 listMat = np.vsplit(base, base.shape[0])  # decoupage de la matrice 1D en une liste de n sous-matrices de dim (1,8)
 output = map(indiceCouche1, listMat)
 indices = [m[1] for m in output]
-base0 = np.array([m[0] for m in output])
-top0 = np.array([top[i, indices[i]] for i in range(len(indices))])
-aod0 = np.array([aod[i, indices[i]] for i in range(len(indices))])
-feature0 = np.array([feature[i, indices[i]] for i in range(len(indices))])
 
-indDust = np.where(feature == types['dust'])[0]
-dust = pd.DataFrame()
-dust['lat'] = lat[indDust]
-dust['lon'] = lon[indDust]
-dust['base'] = base0[indDust]
-dust['top'] = top0[indDust]
-dust['aod'] = aod0[indDust]
-dust['caod'] = caod[indDust]
-dust['masse_aod'] = 1000 * (dust.aod / (dust.top - dust.base))
-dust['masse_caod'] = 1000 * (dust.caod / (dust.top - dust.base))
-dust.dropna(subset=['base'], inplace=True)
+#dust = pd.DataFrame()
+#dust['lat'] = lat[indDust]
+#dust['lon'] = lon[indDust]
+#dust['base'] = np.array([m[0] for m in output])
+#dust['top'] = np.array([top[indDust[i], indices[i]] for i in range(len(indices))])
+#dust['aod'] = np.array([aod[indDust[i], indices[i]] for i in range(len(indices))])
+#dust['caod'] = caod[indDust]
+#dust['masse_aod'] = 1000 * (dust.aod / (dust.top - dust.base))
+#dust['masse_caod'] = 1000 * (dust.caod / (dust.top - dust.base))
+#dust.dropna(subset=['base'], inplace=True)
 
+df = pd.DataFrame()
+df['lat'] = lat
+df['lon'] = lon
+df['feature'] = np.array(feature[range(len(indices)), indices])
+df['featureExt'] = np.array(featureExt[range(len(indices)), indices])
+df['base'] = np.array([m[0] for m in output])
+df['top'] = np.array(top[range(len(indices)), indices])
+df['aod'] = np.array(aod[range(len(indices)), indices])
+df['caod'] = caod
+df['masse_aod'] = 1000 * (df.aod / (df.top - df.base))
+df['masse_caod'] = 1000 * (df.caod / (df.top - df.base))
+df.dropna(subset=['base'], inplace=True)
+dust = df[(df.feature==types['dust'])|(df.featureExt==types['dust'])]
+pdust = df[(df.feature==types['polluted_dust'])|(df.featureExt==types['polluted_dust'])]
 
 # lissage base
 dustF = pd.DataFrame()
 dustF['base'], ixs = medFilt(dust.base.values, 9)
 dustF['top'] = dust.top.values[ixs]
 dustF['aod'] = dust.aod.values[ixs]
-dustF['masse'] = dust.masse.values[ixs]
+dustF['masse_aod'] = dust.masse_aod.values[ixs]
+dustF['masse_caod'] = dust.masse_caod.values[ixs]
 
 ### Polluted Dust
 #################
@@ -196,24 +216,29 @@ topExtPdust = np.ma.array(data=top, mask=~maskExtPdust, fill_value=np.nan)
 #topPdust1 = np.ma.array(data=top, mask=maskP, fill_value=np.nan)
 #aodPdust1 = np.ma.array(data=aod, mask=maskP, fill_value=np.nan)
 # extraction de la premiere couche
-
-indPdust = np.where(feature == types['polluted_dust'])[0]
-pdust = pd.DataFrame()
-pdust['lat'] = lat
-pdust['lon'] = lon
-pdust['base'] = np.array([m[0] for m in output1])
-pdust.base.replace(-9999.0, np.nan, inplace=True)
-pdust['top'] = np.array([topPdust1[i, indices1[i]] for i in range(topPdust1.shape[0])])
-pdust['aod'] = np.array([aodPdust1[i, indices1[i]] for i in range(aodPdust1.shape[0])])
-pdust['masse'] = 1000 * (pdust.aod / (pdust.top - pdust.base))
-pdust.dropna(subset=['base'], inplace=True)
+#indPdust = np.where(maskPdust | maskExtPdust)[0]
+#listMat1 = np.vsplit(base[indPdust,:], base[indPdust,:].shape[0])  # decoupage de la matrice 1D en une liste de n sous-matrices de dim (1,8)
+#output1 = map(indiceCouche1, listMat1)
+#indices1 = [m[1] for m in output1]
+#pdust = pd.DataFrame()
+#pdust['lat'] = lat[indPdust]
+#pdust['lon'] = lon[indPdust]
+#pdust['base'] = np.array([m[0] for m in output1])
+#pdust.base.replace(-9999.0, np.nan, inplace=True)
+#pdust['top'] = np.array([top[indPdust[i], indices1[i]] for i in range(len(indPdust))])
+#pdust['aod'] = np.array([aod[indPdust[i], indices1[i]] for i in range(len(indPdust))])
+#pdust['caod'] = caod[indPdust]
+#pdust['masse_aod'] = 1000 * (pdust.aod / (pdust.top - pdust.base))
+#pdust['masse_caod'] = 1000 * (pdust.caod / (pdust.top - pdust.base))
+#pdust.dropna(subset=['base'], inplace=True)
 
 # lissage base
 pdustF = pd.DataFrame()
 pdustF['base'], ixs1 = medFilt(pdust.base.values, 9)
 pdustF['top'] = pdust.top.values[ixs1]
 pdustF['aod'] = pdust.aod.values[ixs1]
-pdustF['masse'] = pdust.masse.values[ixs1]
+pdustF['masse_aod'] = pdust.masse_aod.values[ixs1]
+pdustF['masse_caod'] = pdust.masse_caod.values[ixs1]
 
 
 #######################################################################################
@@ -244,59 +269,95 @@ for i in range(8):
     ax3.xaxis.grid(True)
     ax3.set_ylabel('nb Layers')
     ax3.set_yticklabels([1,'',2,'',3,'',4])
-ax1.plot(dust.lat, dustF.base, 'r-')
-ax1.plot(dust.lat, dustF.top, 'k-')
-ax2.plot(pdust.lat, pdustF.base, 'r-')
-ax2.plot(pdust.lat, pdustF.top, 'k-')
 fig.show()
 plt.show()
 
 
-fig = plt.figure(1, figsize=(17,12))
-fig.suptitle(f)
-gs = gridspec.GridSpec(8,1, hspace=0.05)
-ax1 = plt.subplot(gs[:4, :])
-ax2 = plt.subplot(gs[4:], sharex=ax1)
+
+fig = plt.figure(1, figsize=(15,10))
+fig.suptitle(f.split('/')[-1] + '\nProfil des Dust et Polluted Dust')
+gs = gridspec.GridSpec(7,1, hspace=0.1)
+ax1 = plt.subplot(gs[:3, :])
+ax2 = plt.subplot(gs[4:, :], sharex=ax1)
+ax3 = plt.subplot(gs[3], sharex=ax1)
 for i in range(8):
-    ax1.fill_between(range(4224), baseDust1[:,i], topDust1[:,i], color="green", alpha=0.5)
-    ax1.fill_between(range(4224), baseDust[:,i], topDust[:,i], color="none", hatch="X",edgecolor="blue",alpha=0.5)
-    ax1.fill_between(range(4224), baseExtDust[:,i], topExtDust[:,i], color="none",hatch="X",edgecolor="blue", alpha=0.5) 
-    #ax1.fill_between(lat, baseExtDust[:,i], topExtDust[:,i], color="green", alpha=0.5)
-    #ax1.fill_between(lat, baseDust1[:,i], topDust1[:,i], color="blue", alpha=0.5)
-    ax1.tick_params(axis='x', which='both', top='off', bottom='off', labelbottom='off')
+    ax1.fill_between(lat, baseDust[:,i], topDust[:,i], color="green", alpha=0.5)
+    ax1.fill_between(lat, baseExtDust[:,i], topExtDust[:,i], color="green", alpha=0.5) 
     ax1.xaxis.grid(True)
+    ax1.tick_params(axis='x', which='both', top='on', bottom='off', labeltop='on', labelbottom='off')
+    ax1.set_xlabel('Latitude')
     ax1.set_ylabel('Altitude(km)')
-    #ax2.plot(lat, nbLayers, color='red', marker='.', ls='none', markeredgecolor='red', markerfacecolor='none')
-    #ax2.fill_between(lat, baseDust1[:,i], topDust1[:,i], color="blue", alpha=0.5)
-    ax2.fill_between(range(4224), basePdust1[:,i], topPdust1[:,i], color="green", alpha=0.5)
-    ax2.fill_between(range(4224), basePdust[:,i], topPdust[:,i], color="none", hatch="X", edgecolor='blue', alpha=0.5)
-    ax2.fill_between(range(4224), baseExtPdust[:,i], topExtPdust[:,i], color="none", hatch="X", edgecolor='blue', alpha=0.5)
-    ax2.xaxis.grid(True)
-    ax2.grid(True,'minor',color='k', alpha=0.2, ls='-', lw=0.2)
+    ax1.text(0.7, 0.92, 'Dust', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='green', bbox=dict(facecolor='none', edgecolor='green', pad=10.0))
+    ax2.fill_between(lat, basePdust[:,i], topPdust[:,i], color="green", alpha=0.5)
+    ax2.fill_between(lat, baseExtPdust[:,i], topExtPdust[:,i], color="green", alpha=0.5)
     ax2.set_xlabel('Latitude')
-    ax2.set_ylabel('nb Layers')
+    ax2.text(0.7, -0.45, 'Polluted Dust', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='green', bbox=dict(facecolor='none', edgecolor='green', pad=10.0))
+    ax2.xaxis.grid(True)
+    ax2.set_ylabel('Altitude(km)')
+    ax3.tick_params(axis='x', which='both', top='off', bottom='off', labelbottom='off')
+    ax3.plot(lat, np.ma.array(nbLayers, mask=nbLayers==0), color='black', marker='.', ls='none', markeredgecolor='none', markerfacecolor='black')
+    ax3.text(0.7, -0.1, 'Nombre de couches detectees', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='none', edgecolor='black', pad=10.0))
+    ax3.xaxis.grid(True)
+    ax3.set_ylabel('nb Layers')
+    ax3.set_yticklabels([1,'',2,'',3,'',4])
+ax1.plot(dust.lat, dustF.base, 'r-')
+ax1.plot(dust.lat, dust.base, 'r:', marker='o', markeredgecolor='r', markerfacecolor='none')
+ax1.plot(dust.lat, dustF.top, 'k-')
+ax1.plot(dust.lat, dust.top, 'k:', marker='o', markeredgecolor='k', markerfacecolor='none')
+ax2.plot(pdust.lat, pdustF.base, 'r-')
+ax2.plot(pdust.lat, pdust.base, 'r:', marker='o', markeredgecolor='r', markerfacecolor='none')
+ax2.plot(pdust.lat, pdustF.top, 'k-')
+ax2.plot(pdust.lat, pdust.top, 'k:', marker='o', markeredgecolor='k', markerfacecolor='none')
 fig.show()
 plt.show()
-#
-#
+
+
+
 #fig = plt.figure(1, figsize=(17,12))
 #fig.suptitle(f)
-#gs = gridspec.GridSpec(7,1, hspace=0.05)
-#ax1 = plt.subplot(gs[:6, :])
-#ax2 = plt.subplot(gs[6], sharex=ax1)
+#gs = gridspec.GridSpec(8,1, hspace=0.05)
+#ax1 = plt.subplot(gs[:4, :])
+#ax2 = plt.subplot(gs[4:], sharex=ax1)
 #for i in range(8):
-#    ax1.fill_between(lat, baseDust[:,i], topDust[:,i], color="k", alpha=0.5)
+#    ax1.fill_between(range(4224), baseDust1[:,i], topDust1[:,i], color="green", alpha=0.5)
+#    ax1.fill_between(range(4224), baseDust[:,i], topDust[:,i], color="none", hatch="X",edgecolor="blue",alpha=0.5)
+#    ax1.fill_between(range(4224), baseExtDust[:,i], topExtDust[:,i], color="none",hatch="X",edgecolor="blue", alpha=0.5) 
 #    #ax1.fill_between(lat, baseExtDust[:,i], topExtDust[:,i], color="green", alpha=0.5)
 #    #ax1.fill_between(lat, baseDust1[:,i], topDust1[:,i], color="blue", alpha=0.5)
 #    ax1.tick_params(axis='x', which='both', top='off', bottom='off', labelbottom='off')
 #    ax1.xaxis.grid(True)
 #    ax1.set_ylabel('Altitude(km)')
-#    ax1.text(45, 38, 'dust', style='italic',bbox={'facecolor':'green', 'alpha':0.5, 'pad':10})
-#    ax1.text(45, 35, 'polluted dust', style='italic',bbox={'facecolor':'blue', 'alpha':0.5, 'pad':10})
-#
-#    ax2.plot(lat, nbLayers, color='red', marker='.', ls='none', markeredgecolor='red', markerfacecolor='none')
+#    #ax2.plot(lat, nbLayers, color='red', marker='.', ls='none', markeredgecolor='red', markerfacecolor='none')
+#    #ax2.fill_between(lat, baseDust1[:,i], topDust1[:,i], color="blue", alpha=0.5)
+#    ax2.fill_between(range(4224), basePdust1[:,i], topPdust1[:,i], color="green", alpha=0.5)
+#    ax2.fill_between(range(4224), basePdust[:,i], topPdust[:,i], color="none", hatch="X", edgecolor='blue', alpha=0.5)
+#    ax2.fill_between(range(4224), baseExtPdust[:,i], topExtPdust[:,i], color="none", hatch="X", edgecolor='blue', alpha=0.5)
 #    ax2.xaxis.grid(True)
+#    ax2.grid(True,'minor',color='k', alpha=0.2, ls='-', lw=0.2)
 #    ax2.set_xlabel('Latitude')
 #    ax2.set_ylabel('nb Layers')
-#    ax2.set_yticklabels([1,'',2,'',3,'',4])
 #fig.show()
+#plt.show()
+#
+#
+fig = plt.figure(1, figsize=(17,12))
+fig.suptitle(f)
+gs = gridspec.GridSpec(7,1, hspace=0.05)
+ax1 = plt.subplot(gs[:6, :])
+ax2 = plt.subplot(gs[6], sharex=ax1)
+for i in range(8):
+    ax1.fill_between(lat, baseDust[:,i], topDust[:,i], color="k", alpha=0.5)
+    #ax1.fill_between(lat, baseExtDust[:,i], topExtDust[:,i], color="green", alpha=0.5)
+    #ax1.fill_between(lat, baseDust1[:,i], topDust1[:,i], color="blue", alpha=0.5)
+    ax1.tick_params(axis='x', which='both', top='off', bottom='off', labelbottom='off')
+    ax1.xaxis.grid(True)
+    ax1.set_ylabel('Altitude(km)')
+    ax1.text(45, 38, 'dust', style='italic',bbox={'facecolor':'green', 'alpha':0.5, 'pad':10})
+    ax1.text(45, 35, 'polluted dust', style='italic',bbox={'facecolor':'blue', 'alpha':0.5, 'pad':10})
+
+    ax2.plot(lat, nbLayers, color='red', marker='.', ls='none', markeredgecolor='red', markerfacecolor='none')
+    ax2.xaxis.grid(True)
+    ax2.set_xlabel('Latitude')
+    ax2.set_ylabel('nb Layers')
+    ax2.set_yticklabels([1,'',2,'',3,'',4])
+fig.show()

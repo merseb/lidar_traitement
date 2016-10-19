@@ -2,6 +2,7 @@
 
 import numpy as np
 from scipy.ndimage import median_filter
+from pyhdf.SD import SD, SDC
 
 
 ####################################################################################
@@ -60,11 +61,30 @@ def indiceCouche1(matrice):
     **matrice (*2d array*)
     
     """
-    ind = np.where(matrice.flatten()[:] != -9999)[0]
+    ind = np.where(~np.isnan(matrice.flatten()))[0]
     if ind.size:
         return matrice.flatten()[ind[-1]],ind[-1]
     else:
-        return -9999,0
+        return np.nan,0
+
+
+def indiceCouche2(matrice, stype):
+    """
+    retourne la valeur et l'indice de la 1ere couche ou -9999, -9999 si aucune couche n'est valide
+
+    Parametres:
+    **matrice (*2d array*)
+    
+    """
+    mat = matrice.flatten()
+    ind = np.where(mat != 0)[0]
+    if ind.size:
+        if mat[ind[-1]] == stype:
+            return stype, ind[-1]
+        else:
+            return 0,0
+    else:
+        return 0,0
     
     
 ####################################################################################
@@ -264,3 +284,13 @@ def dbf2DF(dbfile, upper=True): #Reads in DBF files and returns Pandas DF
         pandasDF.columns = map(str.upper, db.header) 
     db.close() 
     return pandasDF
+
+
+
+def readHDF(fichier):
+    hdf = SD(fichier, SDC.READ)
+    variables = sorted(hdf.datasets().keys())
+    for i in range(len(variables)):
+        vr = hdf.select(variables[i])
+        print '[%i] %s  dims (%d, %d), units: %s, valid_range: %s, format: %s' % (i, variables[i], vr[:].shape[0], vr[:].shape[1], vr.attributes()['units'], vr.attributes()['valid_range'],vr.attributes()['format'])
+        vr.endaccess()
