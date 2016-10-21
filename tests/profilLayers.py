@@ -60,8 +60,8 @@ try:
     features = sys.argv[2]
 except IndexError:
     features = ''    
-if features not in ['all','']:
-    print 'saisir argument all ou laisser vide'
+if features not in ['all','extended', 'details', '']:
+    print 'saisir argument all extended details ou laisser vide'
     sys.exit()
 #f = path + '/2014/zone_etude/CAL_LID_L2_05kmALay-Prov-V3-30.2014-03-24T13-45-37ZD.hdf'
 #f = 'CAL_LID_L2_05kmALay-Prov-V3-30.2014-02-08T00-57-04ZN.hdf'
@@ -202,73 +202,151 @@ topSmokeIE = np.ma.array(data=top, mask=maskS_IE, fill_value=np.nan)
 
 
 #######################################################################################
-#fig = plt.figure(1, figsize=(15,10))
-#fig.suptitle(f.split('/')[-1] + '\nProfil des Dust et Polluted Dust')
-#gs = gridspec.GridSpec(7,1, hspace=0.1)
-#ax1 = plt.subplot(gs[:3, :])
-#ax2 = plt.subplot(gs[4:, :], sharex=ax1)
-#ax3 = plt.subplot(gs[3], sharex=ax1)
-#for i in range(8):
-#    ax1.fill_between(lat, baseDust[:,i], topDust[:,i], color="green", alpha=0.5)
-#    ax1.fill_between(lat, baseExtDust[:,i], topExtDust[:,i], color="none",hatch="X",edgecolor="blue", alpha=0.5) 
-#    ax1.xaxis.grid(True)
-#    ax1.tick_params(axis='x', which='both', top='on', bottom='off', labeltop='on', labelbottom='off')
-#    ax1.set_ylabel('Altitude(km)')
-#    ax1.text(0.7, 0.92, 'Dust', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='green', bbox=dict(facecolor='none', edgecolor='green', pad=10.0))
-#    ax1.text(0.7, 0.77, 'Dust Layer Base Extended', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='blue', bbox=dict(facecolor='none', hatch="X", edgecolor='blue', pad=10.0))
-#    ax2.set_xlabel('Latitude')
-#    ax2.text(0.7, -0.45, 'Polluted Dust', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='green', bbox=dict(facecolor='none', edgecolor='green', pad=10.0))
-#    ax2.text(0.7, -0.60, 'Polluted Dust Layer Base Extended', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='blue', bbox=dict(facecolor='none', hatch="X", edgecolor='blue', pad=10.0))
-#    ax2.fill_between(lat, basePdust[:,i], topPdust[:,i], color="green", alpha=0.5)
-#    ax2.fill_between(lat, baseExtPdust[:,i], topExtPdust[:,i], color="none", hatch="X", edgecolor='blue', alpha=0.5)
-#    ax2.xaxis.grid(True)
-#    ax3.tick_params(axis='x', which='both', top='off', bottom='off', labelbottom='off')
-#    ax2.set_ylabel('Altitude(km)')
-#    ax3.plot(lat, np.ma.array(nbLayers, mask=nbLayers==0), color='black', marker='.', ls='none', markeredgecolor='none', markerfacecolor='black')
-#    ax3.text(0.7, -0.1, 'Nombre de couches detectees', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='none', edgecolor='black', pad=10.0))
-#    ax3.xaxis.grid(True)
-#    ax3.set_ylabel('nb Layers')
-#    ax3.set_yticklabels([1,'',2,'',3,'',4])
-#fig.show()
-#plt.show()
+if features == 'extended':
+    fig = plt.figure(1, figsize=(15,10))
+    fig.suptitle(f.split('/')[-1] + '\nProfil des Dust et Polluted Dust')
+    gs = gridspec.GridSpec(7,1, hspace=0.1)
+    ax1 = plt.subplot(gs[:3, :])
+    ax2 = plt.subplot(gs[4:, :], sharex=ax1)
+    ax3 = plt.subplot(gs[3], sharex=ax1)
+    for i in range(8):
+        ax1.fill_between(lat, baseDust[:,i], topDust[:,i], color="green", alpha=0.5)
+        ax1.fill_between(lat, baseExtDust[:,i], topExtDust[:,i], color="none",hatch="X",edgecolor="blue", alpha=0.5) 
+        ax1.xaxis.grid(True)
+        ax1.tick_params(axis='x', which='both', top='on', bottom='off', labeltop='on', labelbottom='off')
+        ax1.set_ylabel('Altitude(km)')
+        ax1.text(0.7, 0.92, 'Dust', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='green', bbox=dict(facecolor='none', edgecolor='green', pad=10.0))
+        ax1.text(0.7, 0.77, 'Dust Layer Base Extended', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='blue', bbox=dict(facecolor='none', hatch="X", edgecolor='blue', pad=10.0))
+        ax2.set_xlabel('Latitude')
+        ax2.text(0.7, -0.45, 'Polluted Dust', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='green', bbox=dict(facecolor='none', edgecolor='green', pad=10.0))
+        ax2.text(0.7, -0.60, 'Polluted Dust Layer Base Extended', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='blue', bbox=dict(facecolor='none', hatch="X", edgecolor='blue', pad=10.0))
+        ax2.fill_between(lat, basePdust[:,i], topPdust[:,i], color="green", alpha=0.5)
+        ax2.fill_between(lat, baseExtPdust[:,i], topExtPdust[:,i], color="none", hatch="X", edgecolor='blue', alpha=0.5)
+        ax2.xaxis.grid(True)
+        ax3.tick_params(axis='x', which='both', top='off', bottom='off', labelbottom='off')
+        ax2.set_ylabel('Altitude(km)')
+        ax3.plot(lat, np.ma.array(nbLayers, mask=nbLayers==0), color='black', marker='.', ls='none', markeredgecolor='none', markerfacecolor='black')
+        ax3.text(0.7, -0.1, 'Nombre de couches detectees', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='none', edgecolor='black', pad=10.0))
+        ax3.xaxis.grid(True)
+        ax3.set_ylabel('nb Layers')
+        ax3.set_yticklabels([1,'',2,'',3,'',4])
+    fig.show()
+    plt.show()
 
-
-fig = plt.figure(1, figsize=(17,12))
-title = f + '\nDust et Polluted Dust couches initiales et extended\n2: Dust, 5: Polluted Dust'
-gs = gridspec.GridSpec(8,1, hspace=0.05)
-ax1 = plt.subplot(gs[:7, :])
-ax2 = plt.subplot(gs[7:], sharex=ax1)
-for i in range(8):
-    ax1.fill_between(lat, baseDustIE[:,i], topDustIE[:,i], color="yellow", alpha=0.5)
-    ax1.fill_between(lat, basePdustIE[:,i], topPdustIE[:,i], color="brown", alpha=0.5)
-    if features == 'all':
-        title = f + '\nDust et Polluted Dust couches initiales et extended\n1: Clean Marine, 2: Dust, 3:Polluted Continental, 4: Clean Continental, 5: Polluted Dust, 6: Smoke'
+elif features == 'all':
+    fig = plt.figure(1, figsize=(17,12))
+    title = f + '\nDust et Polluted Dust couches initiales et extended\n1: Clean Marine, 2: Dust, 3:Polluted Continental, 4: Clean Continental, 5: Polluted Dust, 6: Smoke'
+    gs = gridspec.GridSpec(8,1, hspace=0.05)
+    ax1 = plt.subplot(gs[:7, :])
+    ax2 = plt.subplot(gs[7:], sharex=ax1)
+    for i in range(8):
+        ax1.fill_between(lat, baseDustIE[:,i], topDustIE[:,i], color="yellow", alpha=0.5)
+        ax1.fill_between(lat, basePdustIE[:,i], topPdustIE[:,i], color="brown", alpha=0.5)            
         ax1.fill_between(lat, baseCmarineIE[:,i], topCmarineIE[:,i], color="blue", alpha=0.5)
         ax1.fill_between(lat, basePcontIE[:,i], topPcontIE[:,i], color="red", alpha=0.5)
         ax1.fill_between(lat, baseCcontIE[:,i], topCcontIE[:,i], color="green", alpha=0.5)
         ax1.fill_between(lat, baseSmokeIE[:,i], topSmokeIE[:,i], color="grey", alpha=0.5)
-        ax1.text(0.9, 0.80, '1', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='blue', edgecolor='blue', pad=10.0))
-        ax1.text(0.9, 0.74, '3', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='red', edgecolor='red', pad=10.0))
-        ax1.text(0.9, 0.68, '4', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='green', edgecolor='green', pad=10.0))
+        ax1.text(0.9, 0.92, '1', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='blue', edgecolor='blue', pad=10.0))
+        ax1.text(0.9, 0.86, '2', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='yellow', edgecolor='yellow', pad=10.0))
+        ax1.text(0.9, 0.80, '3', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='red', edgecolor='red', pad=10.0))
+        ax1.text(0.9, 0.74, '4', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='green', edgecolor='green', pad=10.0))
+        ax1.text(0.9, 0.68, '5', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='brown', edgecolor='brown', pad=10.0))
         ax1.text(0.9, 0.62, '6', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='grey', edgecolor='grey', pad=10.0))
-    ax1.tick_params(axis='x', which='both', top='on', bottom='off', labelbottom='off', labeltop='on')
-    ax1.xaxis.grid(True)
-    ax1.set_ylabel('Altitude(km)')
-    ax1.text(0.9, 0.92, '2', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='yellow', edgecolor='yellow', pad=10.0))
-    ax1.text(0.9, 0.86, '5', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='brown', edgecolor='brown', pad=10.0))
-    ax2.plot(lat, np.ma.array(nbLayers, mask=nbLayers==0), color='black', marker='.', ls='none', markeredgecolor='none', markerfacecolor='black')
-    ax2.text(0.9, -0.05, 'Nombre de couches detectees', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='none', edgecolor='black', pad=10.0))
-    ax2.xaxis.grid(True)
-    ax2.set_xlabel('Latitude')
-    ax2.tick_params(axis='x', which='both', top='off', bottom='on', labelbottom='on')
-    ax2.set_ylabel('nb Layers')
-    ax2.set_yticklabels([1,'',2,'',3,'',4])
-ax1.plot(lat, base0, 'k-', label='limites base-top 1ere couche detectee')
-ax1.plot(lat, top0, 'k-')
-ax1.legend()
-fig.suptitle(title)
-fig.show()
-plt.show()
+        ax1.tick_params(axis='x', which='both', top='on', bottom='off', labelbottom='off', labeltop='on')
+        ax1.xaxis.grid(True)
+        ax1.set_ylabel('Altitude(km)')
+        ax2.plot(lat, np.ma.array(nbLayers, mask=nbLayers==0), color='black', marker='.', ls='none', markeredgecolor='none', markerfacecolor='black')
+        ax2.text(0.9, -0.05, 'Nombre de couches detectees', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='none', edgecolor='black', pad=10.0))
+        ax2.xaxis.grid(True)
+        ax2.set_xlabel('Latitude')
+        ax2.tick_params(axis='x', which='both', top='off', bottom='on', labelbottom='on')
+        ax2.set_ylabel('nb Layers')
+        ax2.set_yticklabels([1,'',2,'',3,'',4])
+    ax1.plot(lat, base0, 'k-', label='limites base-top 1ere couche detectee')
+    ax1.plot(lat, top0, 'k-')
+    ax1.legend()
+    fig.suptitle(title)
+    fig.show()
+    plt.show()
+
+
+
+
+
+elif features == 'details':
+    colors = ['green', 'blue', 'yellow', 'red', 'brown', 'grey', 'cyan', 'magenta']
+    fig = plt.figure(1, figsize=(15,10))
+    fig.suptitle(f.split('/')[-1] + '\nProfil des Dust et Polluted Dust\n(Couches initiales + etendues)')
+    gs = gridspec.GridSpec(7,1, hspace=0.05)
+    ax1 = plt.subplot(gs[:3, :])
+    ax2 = plt.subplot(gs[4:, :], sharex=ax1)
+    ax3 = plt.subplot(gs[3], sharex=ax1)
+    for i in range(8):
+        ax1.fill_between(lat, baseDustIE[:,i], topDustIE[:,i], color=colors[i], alpha=0.5)
+        ax1.tick_params(axis='x', which='both', top='on', bottom='off', labelbottom='off', labeltop='on')
+        ax1.xaxis.grid(True)
+        ax1.set_ylabel('Altitude(km)')
+        ax1.text(0.93, 0.98, 'Layer Number', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black')
+        ax1.text(0.9, 0.90, '1', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='green', edgecolor='green', pad=5.0))
+        ax1.text(0.9, 0.82, '2', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='blue', edgecolor='blue', pad=5.0))
+        ax1.text(0.9, 0.74, '3', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='yellow', edgecolor='yellow', pad=5.0))
+        ax1.text(0.9, 0.66, '4', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='red', edgecolor='red', pad=5.0))
+        ax1.text(0.9, 0.58, '5', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='brown', edgecolor='brown', pad=5.0))
+        ax1.text(0.9, 0.50, '6', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='grey', edgecolor='grey', pad=5.0))
+        ax1.text(0.9, 0.42, '7', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='cyan', edgecolor='cyan', pad=5.0))
+        ax1.text(0.9, 0.34, '8', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='magenta', edgecolor='magenta', pad=5.0))
+        ax2.fill_between(lat, basePdustIE[:,i], topPdustIE[:,i], color=colors[i], alpha=0.5)
+        ax2.tick_params(axis='x', which='both', top='off', bottom='on', labelbottom='on')
+        ax2.set_ylabel('Altitude(km)')
+        ax3.plot(lat, np.ma.array(nbLayers, mask=nbLayers==0), color='black', marker='.', ls='none', markeredgecolor='none', markerfacecolor='black')
+        ax3.text(0.97, -0.1, 'Nombre de couches detectees', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='none', edgecolor='black', pad=5.0))
+        ax3.xaxis.grid(True)
+        ax3.tick_params(axis='x', which='both', top='off', bottom='off', labelbottom='off')
+        ax3.set_ylabel('nb Layers')
+        ax3.set_yticklabels([1,'',2,'',3,'',4])
+    fig.show()
+    plt.show()
+
+
+
+else:
+    fig = plt.figure(1, figsize=(17,12))
+    title = f + '\nDust et Polluted Dust couches initiales et extended\n2: Dust, 5: Polluted Dust'
+    gs = gridspec.GridSpec(8,1, hspace=0.05)
+    ax1 = plt.subplot(gs[:7, :])
+    ax2 = plt.subplot(gs[7:], sharex=ax1)
+    for i in range(8):
+        ax1.fill_between(lat, baseDustIE[:,i], topDustIE[:,i], color="yellow", alpha=0.5)
+        ax1.fill_between(lat, basePdustIE[:,i], topPdustIE[:,i], color="brown", alpha=0.5)
+        if features == 'all':
+            title = f + '\nDust et Polluted Dust couches initiales et extended\n1: Clean Marine, 2: Dust, 3:Polluted Continental, 4: Clean Continental, 5: Polluted Dust, 6: Smoke'
+            ax1.fill_between(lat, baseCmarineIE[:,i], topCmarineIE[:,i], color="blue", alpha=0.5)
+            ax1.fill_between(lat, basePcontIE[:,i], topPcontIE[:,i], color="red", alpha=0.5)
+            ax1.fill_between(lat, baseCcontIE[:,i], topCcontIE[:,i], color="green", alpha=0.5)
+            ax1.fill_between(lat, baseSmokeIE[:,i], topSmokeIE[:,i], color="grey", alpha=0.5)
+            ax1.text(0.9, 0.80, '1', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='blue', edgecolor='blue', pad=10.0))
+            ax1.text(0.9, 0.74, '3', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='red', edgecolor='red', pad=10.0))
+            ax1.text(0.9, 0.68, '4', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='green', edgecolor='green', pad=10.0))
+            ax1.text(0.9, 0.62, '6', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='grey', edgecolor='grey', pad=10.0))
+        ax1.tick_params(axis='x', which='both', top='on', bottom='off', labelbottom='off', labeltop='on')
+        ax1.xaxis.grid(True)
+        ax1.set_ylabel('Altitude(km)')
+        ax1.text(0.9, 0.92, '2', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='yellow', edgecolor='yellow', pad=10.0))
+        ax1.text(0.9, 0.86, '5', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='brown', edgecolor='brown', pad=10.0))
+        ax2.plot(lat, np.ma.array(nbLayers, mask=nbLayers==0), color='black', marker='.', ls='none', markeredgecolor='none', markerfacecolor='black')
+        ax2.text(0.9, -0.05, 'Nombre de couches detectees', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='none', edgecolor='black', pad=10.0))
+        ax2.xaxis.grid(True)
+        ax2.set_xlabel('Latitude')
+        ax2.tick_params(axis='x', which='both', top='off', bottom='on', labelbottom='on')
+        ax2.set_ylabel('nb Layers')
+        ax2.set_yticklabels([1,'',2,'',3,'',4])
+    ax1.plot(lat, base0, 'k-', label='limites base-top 1ere couche detectee')
+    ax1.plot(lat, top0, 'k-')
+    ax1.legend()
+    fig.suptitle(title)
+    fig.show()
+    plt.show()
+
 
 #
 #fig = plt.figure(1, figsize=(17,12))

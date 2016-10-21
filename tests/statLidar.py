@@ -9,6 +9,7 @@ from glob import glob
 import shapefile as shp
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib.gridspec as gridspec
 from matplotlib.pyplot import rc
 reload(sys)  
 sys.setdefaultencoding('utf8')
@@ -41,8 +42,8 @@ fdbf = '/home/mers/Bureau/teledm/fusion_donnees/shape/2014_afrique_lissageBase9p
 dbf = dbf2DF(fdbf, upper=False)
 dbf.set_index(pd.to_datetime(dbf.Date), inplace=True)
 subT = pd.DataFrame(dbf.FeatureSub.values, index=pd.to_datetime(dbf.Date), columns=['FeatureSubtype'])
-nbPdust = dbf.FeatureSub[dbf.FeatureSub=='polluted_dust'].resample('M','count')
-nbDust = dbf.FeatureSub[dbf.FeatureSub=='polluted_dust'].resample('M','count')
+nbPdust = dbf.FeatureSub[dbf.FeatureSub=='polluted_dust'].resample('M').count()
+nbDust = dbf.FeatureSub[dbf.FeatureSub=='polluted_dust'].resample('M').count()
 
 fig, ax = plt.subplots(6,2, sharex=False, sharey=False, figsize=(23,12)) #, gridspec_kw={'hspace':0, 'wspace':0})
 fig.suptitle('Distribution(pourcentage) des donnees lidar sur le continent africain\npar degre de latitude pour chaque mois de 2014')
@@ -57,14 +58,37 @@ for i in range(12):
         z = 1
     nb = dbf.Latitude['2014-'+str(i+1)].count()
     for t in ['dust','polluted_dust']:
-        weight = np.ones_like(dbf.Latitude[dbf.FeatureSub==t]['2014-'+str(i+1)])*100/nb
-        ax[j,z].hist(dbf.Latitude[dbf.FeatureSub==t]['2014-'+str(i+1)], bins=range(-5,41), weights=weight, label=t, alpha=0.5)
+        weight = np.ones_like(dbf.Latitude[dbf.FeatureSub==t]['2014-'+str(i+1)])/nb
+        ax[j,z].hist(dbf.Latitude[dbf.FeatureSub==t]['2014-'+str(i+1)], bins=range(-5,41), label=t, alpha=0.5)
     ax[j,z].text(1, 3., dbf.Latitude['2014-'+str(i+1)].index[0].strftime('%B'), style='italic',bbox={'facecolor':'none', 'alpha':0.5, 'pad':10}, fontsize=10)
     ax[j,z].legend(framealpha=0.5)
 plt.show()
 
+date = '2014-01'
+fig, (ax1, ax2, ax3) = plt.subplots(1,3, figsize=(23,12))
+ax1.hist(dbf.Latitude[date], bins=range(-5,41), label='dust + polluted dust', alpha=0.5)
+ax1.hist(dbf.Latitude[dbf.FeatureSub=='dust'][date], bins=range(-5,41), histtype='bar', label='dust', alpha=0.5)
+ax1.hist([dbf.Latitude[dbf.FeatureSub=='polluted_dust'][date]],bins=range(-5,41), histtype='bar', stacked=True, label='polluted dust', alpha=0.5)
+
+ax2.hist([dbf.Latitude[dbf.FeatureSub=='dust'][date],dbf.Latitude[dbf.FeatureSub=='polluted_dust'][date]],bins=range(-5,41), histtype='bar', stacked=True, label=['dust','polluted dust'], alpha=0.5)
+w = np.ones_like(dbf.Latitude[date])*100/(nbDust[0]+nbPdust[0])
+wDust = np.ones_like(dbf.Latitude[dbf.FeatureSub=='dust'][date])*100/nbDust[0]
+wPdust = np.ones_like(dbf.Latitude[dbf.FeatureSub=='polluted_dust'][date])*100/nbPdust[0]
+ax3.hist(dbf.Latitude[date], bins=range(-5,41), weights=w, label='dust + polluted dust', alpha=0.5)
+ax3.hist(dbf.Latitude[dbf.FeatureSub=='dust'][date], bins=range(-5,41), weights=wDust, label='dust', alpha=0.5)
+ax3.hist([dbf.Latitude[dbf.FeatureSub=='polluted_dust'][date]],bins=range(-5,41), weights=wPdust, label='polluted dust', alpha=0.5)
+
+ax1.legend()
+ax2.legend()
+fig.show()
+plt.show()
 
 
+dbf.Latitude[date].hist(bins=range(-5,41), label='dust + polluted dust', alpha=0.5)
+dbf.Latitude[dbf.FeatureSub=='dust'][date].hist(bins=range(-5,41), label='dust', alpha=0.5)
+dbf.Latitude[dbf.FeatureSub=='polluted_dust'][date].hist(bins=range(-5,41), label='polluted dust', alpha=0.5)
+plt.legend()
+plt.show()
 ##############################################################################################################################################################
 ##############################################################################################################################################################
 
@@ -150,6 +174,33 @@ for stype in ['dust', 'polluted_dust']:
     plt.imshow(grid, extent=[xo.min(),xo.max(),yo.min(),yo.max()], interpolation='none')
     plt.show(), plt.colorbar()
     fig.savefig(ddir_fig + '/'+ date.replace('-', '') + '_reechantillonnage_' + stype + '.png', dpi=330)
-    
 
 
+
+############## plot interpolations
+date='2014-01-27'
+files = sorted(glob('*nc'))
+types = ['dust', 'polluted_dust']
+titles=['(sans lissage)', '(lissage Base)', '(lissage ColAOD)', '(lissage Concentration)', '(lissage Top)']
+fig = plt.figure(1,figsize=(23,12))
+gs = gridspec.GridSpec(2,5,hspace=0) #width_ratios=[20,10], height_ratios=[10,5])
+fig.suptitle(date)
+for i in range(5):
+    for j in range(2):
+        nc = Dataset(files[i], 'r')
+        dates = nc.variables['time']
+        lon = nc.variables['longitude'][:]
+        lat = nc.variables['latitude'][:]
+        ind = date2index(datetime.strptime(date, "%Y-%m-%d"), dates, select='exact')
+        v = nc.variables[types[j]+'_Concentration_Aerosols'][ind,:,:]
+        nc.close()
+        ax = plt.subplot(gs[j,i])
+        im = ax.imshow(v, extent=[lon.min(), lon.max(), lat.min(), lat.max()], vmin=0, vmax=1500, interpolation='none')
+        if i == 4 and j==0:
+            #divider = make_axes_locatable(ax)
+            #cax = divider.append_axes("right", size="5%", pad=0.05)
+            plt.colorbar(im, orientation='horizontal')
+        #plt.clim(im, vmin=0, vmax=1500)
+        ax.set_title(types[j] + 'Concentration \n'+titles[i])
+fig.show()
+plt.show()

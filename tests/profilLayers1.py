@@ -154,28 +154,33 @@ topDust = np.ma.array(data=top, mask=~maskDust, fill_value=np.nan)
 maskExtDust = featureExt == types['dust']
 baseExtDust = np.ma.array(data=base, mask=~maskExtDust, fill_value=np.nan)
 topExtDust = np.ma.array(data=top, mask=~maskExtDust, fill_value=np.nan)
-## masques combines
-maskDE = np.where(maskDust | maskExtDust)[0]
-baseDE = np.ma.array(data=base, mask=~maskDE, fill_value=np.nan)
+# masques combines
+maskD_IE = ~maskDust & ~maskExtDust
+baseDustIE = np.ma.array(data=base, mask=maskD_IE, fill_value=np.nan)
+topDustIE = np.ma.array(data=top, mask=maskD_IE, fill_value=np.nan)
+
+### Polluted Dust
+#################
+# extraction data initiales
+maskPdust = feature == types['polluted_dust']
+basePdust = np.ma.array(data=base, mask=~maskPdust, fill_value=np.nan)
+topPdust = np.ma.array(data=top, mask=~maskPdust, fill_value=np.nan)
+# extraction datas layer extended
+maskExtPdust = featureExt == types['polluted_dust']
+baseExtPdust = np.ma.array(data=base, mask=~maskExtPdust, fill_value=np.nan)
+topExtPdust = np.ma.array(data=top, mask=~maskExtPdust, fill_value=np.nan)
+# masques combines
+maskP_IE = ~maskPdust & ~maskExtPdust
+basePdustIE = np.ma.array(data=base, mask=maskP_IE, fill_value=np.nan)
+topPdustIE = np.ma.array(data=top, mask=maskP_IE, fill_value=np.nan)
+
+
+
+####################################
 ## extraction de la premiere couche
-#indDust = np.where(maskDust | maskExtDust)[0]
-#listMat = np.vsplit(base[indDust,:], base[indDust,:].shape[0])  # decoupage de la matrice 1D en une liste de n sous-matrices de dim (1,8)
-#output = map(indiceCouche1, listMat)
-#indices = [m[1] for m in output]
 listMat = np.vsplit(base, base.shape[0])  # decoupage de la matrice 1D en une liste de n sous-matrices de dim (1,8)
 output = map(indiceCouche1, listMat)
 indices = [m[1] for m in output]
-
-#dust = pd.DataFrame()
-#dust['lat'] = lat[indDust]
-#dust['lon'] = lon[indDust]
-#dust['base'] = np.array([m[0] for m in output])
-#dust['top'] = np.array([top[indDust[i], indices[i]] for i in range(len(indices))])
-#dust['aod'] = np.array([aod[indDust[i], indices[i]] for i in range(len(indices))])
-#dust['caod'] = caod[indDust]
-#dust['masse_aod'] = 1000 * (dust.aod / (dust.top - dust.base))
-#dust['masse_caod'] = 1000 * (dust.caod / (dust.top - dust.base))
-#dust.dropna(subset=['base'], inplace=True)
 
 df = pd.DataFrame()
 df['lat'] = lat
@@ -186,6 +191,7 @@ df['base'] = np.array([m[0] for m in output])
 df['top'] = np.array(top[range(len(indices)), indices])
 df['aod'] = np.array(aod[range(len(indices)), indices])
 df['caod'] = caod
+df['rh'] = np.array(rh[range(len(indices)), indices])
 df['masse_aod'] = 1000 * (df.aod / (df.top - df.base))
 df['masse_caod'] = 1000 * (df.caod / (df.top - df.base))
 df.dropna(subset=['base'], inplace=True)
@@ -199,38 +205,6 @@ dustF['top'] = dust.top.values[ixs]
 dustF['aod'] = dust.aod.values[ixs]
 dustF['masse_aod'] = dust.masse_aod.values[ixs]
 dustF['masse_caod'] = dust.masse_caod.values[ixs]
-
-### Polluted Dust
-#################
-# extraction data initiales
-maskPdust = feature == types['polluted_dust']
-basePdust = np.ma.array(data=base, mask=~maskPdust, fill_value=np.nan)
-topPdust = np.ma.array(data=top, mask=~maskPdust, fill_value=np.nan)
-# extraction datas layer extended
-maskExtPdust = featureExt == types['polluted_dust']
-baseExtPdust = np.ma.array(data=base, mask=~maskExtPdust, fill_value=np.nan)
-topExtPdust = np.ma.array(data=top, mask=~maskExtPdust, fill_value=np.nan)
-# masques combines
-#maskP = ~maskPdust & ~maskExtPdust
-#basePdust1 = np.ma.array(data=base, mask=maskP, fill_value=np.nan)
-#topPdust1 = np.ma.array(data=top, mask=maskP, fill_value=np.nan)
-#aodPdust1 = np.ma.array(data=aod, mask=maskP, fill_value=np.nan)
-# extraction de la premiere couche
-#indPdust = np.where(maskPdust | maskExtPdust)[0]
-#listMat1 = np.vsplit(base[indPdust,:], base[indPdust,:].shape[0])  # decoupage de la matrice 1D en une liste de n sous-matrices de dim (1,8)
-#output1 = map(indiceCouche1, listMat1)
-#indices1 = [m[1] for m in output1]
-#pdust = pd.DataFrame()
-#pdust['lat'] = lat[indPdust]
-#pdust['lon'] = lon[indPdust]
-#pdust['base'] = np.array([m[0] for m in output1])
-#pdust.base.replace(-9999.0, np.nan, inplace=True)
-#pdust['top'] = np.array([top[indPdust[i], indices1[i]] for i in range(len(indPdust))])
-#pdust['aod'] = np.array([aod[indPdust[i], indices1[i]] for i in range(len(indPdust))])
-#pdust['caod'] = caod[indPdust]
-#pdust['masse_aod'] = 1000 * (pdust.aod / (pdust.top - pdust.base))
-#pdust['masse_caod'] = 1000 * (pdust.caod / (pdust.top - pdust.base))
-#pdust.dropna(subset=['base'], inplace=True)
 
 # lissage base
 pdustF = pd.DataFrame()
@@ -249,15 +223,15 @@ ax1 = plt.subplot(gs[:3, :])
 ax2 = plt.subplot(gs[4:, :], sharex=ax1)
 ax3 = plt.subplot(gs[3], sharex=ax1)
 for i in range(8):
-    ax1.fill_between(lat, baseDust[:,i], topDust[:,i], color="green", alpha=0.5)
-    ax1.fill_between(lat, baseExtDust[:,i], topExtDust[:,i], color="none",hatch="X",edgecolor="blue", alpha=0.5) 
+    ax1.fill_between(lat, baseDustIE[:,i], topDustIE[:,i], color="green", alpha=0.5)
+    #ax1.fill_between(lat, baseExtDust[:,i], topExtDust[:,i], color="none",hatch="X",edgecolor="blue", alpha=0.5) 
     ax1.xaxis.grid(True)
     ax1.tick_params(axis='x', which='both', top='on', bottom='off', labeltop='on', labelbottom='off')
     ax1.set_ylabel('Altitude(km)')
     ax1.text(0.7, 0.92, 'Dust', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='green', bbox=dict(facecolor='none', edgecolor='green', pad=10.0))
     ax1.text(0.7, 0.77, 'Dust Layer Base Extended', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='blue', bbox=dict(facecolor='none', hatch="X", edgecolor='blue', pad=10.0))
-    ax2.fill_between(lat, basePdust[:,i], topPdust[:,i], color="green", alpha=0.5)
-    ax2.fill_between(lat, baseExtPdust[:,i], topExtPdust[:,i], color="none", hatch="X", edgecolor='blue', alpha=0.5)
+    ax2.fill_between(lat, basePdustIE[:,i], topPdustIE[:,i], color="green", alpha=0.5)
+    #ax2.fill_between(lat, baseExtPdust[:,i], topExtPdust[:,i], color="none", hatch="X", edgecolor='blue', alpha=0.5)
     ax2.set_xlabel('Latitude')
     ax2.text(0.7, -0.45, 'Polluted Dust', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='green', bbox=dict(facecolor='none', edgecolor='green', pad=10.0))
     ax2.text(0.7, -0.60, 'Polluted Dust Layer Base Extended', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='blue', bbox=dict(facecolor='none', hatch="X", edgecolor='blue', pad=10.0))
@@ -275,39 +249,53 @@ plt.show()
 
 
 fig = plt.figure(1, figsize=(15,10))
-fig.suptitle(f.split('/')[-1] + '\nProfil des Dust et Polluted Dust')
-gs = gridspec.GridSpec(7,1, hspace=0.1)
+fig.suptitle(f.split('/')[-1] + '\nProfil des Dust et Polluted Dust(vert ensemble des couches detectees: intiales+extended)\nProfils Base et top (1ere couche detectees) ainsi que base lissee et top lisse(en ne prenant en compte que les valeurs modifiees de la base)\nEn parallele profil de l humidite relative (1ere couche detectee)')
+gs = gridspec.GridSpec(7,1, hspace=0.05)
 ax1 = plt.subplot(gs[:3, :])
 ax2 = plt.subplot(gs[4:, :], sharex=ax1)
 ax3 = plt.subplot(gs[3], sharex=ax1)
 for i in range(8):
-    ax1.fill_between(lat, baseDust[:,i], topDust[:,i], color="green", alpha=0.5)
-    ax1.fill_between(lat, baseExtDust[:,i], topExtDust[:,i], color="green", alpha=0.5) 
+    ax1.fill_between(lat, baseDustIE[:,i], topDustIE[:,i], color="green", alpha=0.5)
     ax1.xaxis.grid(True)
     ax1.tick_params(axis='x', which='both', top='on', bottom='off', labeltop='on', labelbottom='off')
-    ax1.set_xlabel('Latitude')
     ax1.set_ylabel('Altitude(km)')
-    ax1.text(0.7, 0.92, 'Dust', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='green', bbox=dict(facecolor='none', edgecolor='green', pad=10.0))
-    ax2.fill_between(lat, basePdust[:,i], topPdust[:,i], color="green", alpha=0.5)
-    ax2.fill_between(lat, baseExtPdust[:,i], topExtPdust[:,i], color="green", alpha=0.5)
+    ax1.text(0.98, 0.9, 'Dust', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='k', bbox=dict(facecolor='green', edgecolor='green', pad=10.0), alpha=0.5)
+    
+    ax2.fill_between(lat, basePdustIE[:,i], topPdustIE[:,i], color="green", alpha=0.5)
     ax2.set_xlabel('Latitude')
-    ax2.text(0.7, -0.45, 'Polluted Dust', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='green', bbox=dict(facecolor='none', edgecolor='green', pad=10.0))
+    ax2.text(0.98, -0.45, 'Polluted Dust', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='k', bbox=dict(facecolor='green', edgecolor='green', pad=10.0))
     ax2.xaxis.grid(True)
     ax2.set_ylabel('Altitude(km)')
+    
     ax3.tick_params(axis='x', which='both', top='off', bottom='off', labelbottom='off')
     ax3.plot(lat, np.ma.array(nbLayers, mask=nbLayers==0), color='black', marker='.', ls='none', markeredgecolor='none', markerfacecolor='black')
-    ax3.text(0.7, -0.1, 'Nombre de couches detectees', horizontalalignment='left', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='none', edgecolor='black', pad=10.0))
+    ax3.text(0.98, -0.1, 'Nombre de couches detectees', horizontalalignment='right', verticalalignment='top', transform=ax1.transAxes, color='black', bbox=dict(facecolor='none', edgecolor='black', pad=5.0), alpha=0.5)
     ax3.xaxis.grid(True)
     ax3.set_ylabel('nb Layers')
     ax3.set_yticklabels([1,'',2,'',3,'',4])
-ax1.plot(dust.lat, dustF.base, 'r-')
-ax1.plot(dust.lat, dust.base, 'r:', marker='o', markeredgecolor='r', markerfacecolor='none')
-ax1.plot(dust.lat, dustF.top, 'k-')
-ax1.plot(dust.lat, dust.top, 'k:', marker='o', markeredgecolor='k', markerfacecolor='none')
-ax2.plot(pdust.lat, pdustF.base, 'r-')
-ax2.plot(pdust.lat, pdust.base, 'r:', marker='o', markeredgecolor='r', markerfacecolor='none')
-ax2.plot(pdust.lat, pdustF.top, 'k-')
-ax2.plot(pdust.lat, pdust.top, 'k:', marker='o', markeredgecolor='k', markerfacecolor='none')
+
+ax1.plot(dust.lat, dust.base, 'r:', marker='o', markeredgecolor='r', markerfacecolor='none', label='base')
+ax1.plot(dust.lat, dustF.base, 'r-', marker='.', label='base lissee')
+ax1.plot(dust.lat, dust.top, 'k:', marker='o', markeredgecolor='k', markerfacecolor='none', label='top')
+ax1.plot(dust.lat, dustF.top, 'k-', marker='.', label='top lissee')
+h1, l1 = ax1.get_legend_handles_labels()
+ax12 = ax1.twinx()
+ax12.set_ylabel('Pourcentage')
+ax12.plot(df.lat, df.rh*100, 'b-', marker='.', markeredgecolor='b', markerfacecolor='none', label='Humidite relative')
+h12, l12 = ax12.get_legend_handles_labels()
+
+ax2.plot(pdust.lat, pdust.base, 'r:', marker='o', markeredgecolor='r', markerfacecolor='none', label='base')
+ax2.plot(pdust.lat, pdustF.base, 'r-', marker='.', label='base lissee')
+ax2.plot(pdust.lat, pdust.top, 'k:', marker='o', markeredgecolor='k', markerfacecolor='none', label='top')
+ax2.plot(pdust.lat, pdustF.top, 'k-', marker='.', label='top lissee')
+h2, l2 = ax2.get_legend_handles_labels()
+ax22 = ax2.twinx()
+ax22.set_ylabel('Pourcentage')
+ax22.plot(df.lat, df.rh*100, 'b-', marker='.', markeredgecolor='b', markerfacecolor='none', label='Humidite relative')
+h22, l22 = ax22.get_legend_handles_labels()
+
+ax1.legend(h1+h12, l1+l12, loc=7, framealpha=0.5)
+ax2.legend(h2+h22, l2+l22, loc=7, framealpha=0.5)
 fig.show()
 plt.show()
 
@@ -361,3 +349,38 @@ for i in range(8):
     ax2.set_ylabel('nb Layers')
     ax2.set_yticklabels([1,'',2,'',3,'',4])
 fig.show()
+
+
+########### Scatter plot
+dusta, dustb, dustr, dustp, duststd = linregress(dust.base,dust.top)
+dustFa, dustFb, dustFr, dustTp, dustFstd = linregress(dustF.base,dustF.top)
+pdusta, pdustb, pdustr, pdustp, pduststd = linregress(pdust.base,pdust.top)
+pdustFa, pdustFb, pdustFr, pdustTp, pdustFstd = linregress(pdustF.base,pdustF.top)
+
+fig, (ax1, ax2) = plt.subplots(1,2, figsize=(17,12))
+ax1.plot(dust.base, dust.top, 'k.', dust.base, dusta*dust.base + dustb, '--k', label='dust', markeredgecolor='k', markerfacecolor='none')
+ax1.plot(dustF.base, dustF.top, 'r.', dustF.base, dustFa*dustF.base + dustFb, '--r', label='dustF', markeredgecolor='r', markerfacecolor='none')
+ax1.text(0.25, 4.8, 'Dust         a=%.2f, b=%.2f, r2=%.2f' % (dusta,dustb,np.sqrt(dustr)), style='italic', color='k')
+ax1.text(0.25, 4.7, 'Dust lisse a=%.2f, b=%.2f, r2=%.2f' % (dustFa,dustFb,np.sqrt(dustFr)), style='italic', color='r')
+ax1.set_xlabel('base')
+ax1.set_ylabel('top')
+#ax1.set(adjustable='box-forced', aspect='equal')
+
+ax2.plot(pdust.base, pdust.top, 'k.', pdust.base, pdusta*pdust.base + pdustb, '--k', label='pdust', markeredgecolor='k', markerfacecolor='none')
+ax2.plot(pdustF.base, pdustF.top, 'r.', pdustF.base, pdustFa*pdustF.base + pdustFb, '--r', label='pdustF', markeredgecolor='r', markerfacecolor='none')
+ax2.text(0.25, 7.7, 'Polluted Dust         a=%.2f, b=%.2f, r2=%.2f' % (dusta,dustb,np.sqrt(dustr)), style='italic', color='k')
+ax2.text(0.25, 7.5, 'Polluted Dust lisse a=%.2f, b=%.2f, r2=%.2f' % (pdustFa,pdustFb,np.sqrt(pdustFr)), style='italic', color='r')
+ax2.set_xlabel('base')
+ax2.set_ylabel('top')
+#ax2.set(adjustable='box-forced', aspect='equal')
+
+fig.suptitle(f +'\n scatter plot base/top, base lissee/top lissee')
+fig.show()
+plt.show()
+
+plt.scatter(pdust.base,pdust.top, color='k', marker='.', edgecolor='k', facecolor='none',label='polluted dust')
+plt.scatter(pdustF.base,pdustF.top, color='r', marker='.', edgecolor='r', facecolor='none',label='polluted dustF')
+plt.xlabel('base')
+plt.ylabel('top')
+plt.title('2014-03-24 Polluted Dust scatter plot base/top, base lissee/top lissee')
+plt.legend()
